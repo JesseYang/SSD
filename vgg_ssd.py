@@ -29,13 +29,6 @@ except Exception:
 
 class VGGSSD(SSDModel):
 
-    def ssd_multibox_layer(feature_idx, feature):
-        anchor_sizes = cfg.anchor_sizes[feature_idx]
-        anchor_ratios = cfg.anchor_ratios[feature_idx]
-
-        anchor_num = len(anchor_sizes[feature_idx]) + len(anchor_ratios[feature_idx])
-
-
     def get_logits(self, image):
 
         with argscope(Conv2D, kernel_shape=3, nl=tf.nn.relu):
@@ -98,18 +91,13 @@ class VGGSSD(SSDModel):
                      .Conv2D('conv11_1', 128, 1)
                      .Conv2D('conv11_2', 256, 3, padding="VALID")())
 
-        if self.data_format == "NHWC":
+        if self.data_format == 'NHWC':
             conv4_3 = 20 * tf.nn.l2_normalize(conv4_3, 3)
         else:
             conv4_3 = 20 * tf.nn.l2_normalize(conv4_3, 1)
 
         features = [conv4_3, conv7, conv8, conv9, conv10, conv11]
-
-        for feature_idx, feature in features:
-            ssd_multibox_layer(feature_idx, feature)
-
-        # return [conv4_3, conv7, conv8, conv9, conv10, conv11]
-        return conv11
+        return features
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

@@ -43,6 +43,38 @@ class SSDModel(ModelDesc):
         return [InputDesc(tf.uint8, [None, cfg.img_h, cfg.img_w, 3], 'input'),
                 ]
 
+    def ssd_multibox_layer(self, feature_idx, feature):
+        anchor_sizes = cfg.anchor_sizes[feature_idx]
+        anchor_ratios = cfg.anchor_ratios[feature_idx]
+
+        anchor_num = len(anchor_sizes[feature_idx]) + len(anchor_ratios[feature_idx])
+
+        in_shape = tf.shape(l)
+        if self.data_format == 'NCHW':
+            h = in_shape[2]
+            w = in_shape[3]
+        else:
+            h = in_shape[1]
+            w = in_shape[2]
+
+        # location
+        loc_pred_num = anchor_num * 4
+        loc_pred = Conv2D('conv_loc', feature, loc_pred_num, 3)
+        if self.data_format == 'NCHW':
+            loc_pred = tf.transpose(loc_pred, [0, 2, 3, 1])
+        # loc_pred = tf.reshape(loc_pred, [-1, h, w, anchor_num, 4])
+        loc_pred = tf.reshape(loc_pred, [-1, h * w * anchor_num, 4])
+
+        # class prediction
+        cls_pred_num = anchor_num * (cfg.n_classes + 1)
+        cls_pred = Conv2D('conv_loc', feature, cls_pred_num, 3)
+        if self.data_format == 'NCHW':
+            loc_pred = tf.transpose(cls_pred, [0, 2, 3, 1])
+        # cls_pred = tf.reshape(cls_pred, [-1, h, w, anchor_num, (cfg.n_classes + 1)])
+        cls_pred = tf.reshape(cls_pred, [-1, h * w * anchor_num, (cfg.n_classes + 1)])
+
+        return loc_pred, cls_pred
+
     @abstractmethod
     def get_logits(self, image):
         """
@@ -68,11 +100,21 @@ class SSDModel(ModelDesc):
 
         image = tf.identity(image, name='network_input')
 
-        logits = self.get_logits(image)
+        features = self.get_logits(image)
 
-        # the loss part of SSD, confirm that logits is NCHW format
+        loc_pred_list = []
+        cls_pred_list = []
+        for feature_idx, feature in features:
+            loc_pred, cls_pred = self.ssd_multibox_layer(feature_idx, feature)
+            loc_pred_list.append(loc_pred)
+            cls_pred_list.append(cls_pred)
+
+        loc_pred = tf.concat(loc_pred_list, axis=1, name='loc_pred')
+        cls_pred = tf.concat(cls_pred_list, axis=1, name='cls_pred')
+
+        # the loss part of SSD
         # self.cost = tf.add_n([loss, wd_cost], name='cost')
-        self.cost = tf.reduce_sum(logits, name='cost')
+        self.cost = tf.reduce_sum(loc_pred, name='cost')
 
     def _get_optimizer(self):
         lr = get_scalar_var('learning_rate', 1e-4, summary=True)
