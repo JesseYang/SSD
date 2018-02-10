@@ -41,21 +41,22 @@ class SSDModel(ModelDesc):
 
     def _get_inputs(self):
         return [InputDesc(tf.uint8, [None, cfg.img_h, cfg.img_w, 3], 'input'),
+                InputDesc(tf.int32, [None, cfg.tot_anchor_num], 'conf_label'),
+                InputDesc(tf.float32, [None, cfg.tot_anchor_num, 4], 'loc_label')
                 ]
 
     def ssd_multibox_layer(self, feature_idx, feature):
         anchor_sizes = cfg.anchor_sizes[feature_idx]
         anchor_ratios = cfg.anchor_ratios[feature_idx]
 
-        anchor_num = len(anchor_sizes[feature_idx]) + len(anchor_ratios[feature_idx])
+        anchor_num = len(anchor_sizes) + len(anchor_ratios)
 
-        in_shape = tf.shape(l)
         if self.data_format == 'NCHW':
-            h = in_shape[2]
-            w = in_shape[3]
+            h = int(feature.get_shape()[2])
+            w = int(feature.get_shape()[3])
         else:
-            h = in_shape[1]
-            w = in_shape[2]
+            h = int(feature.get_shape()[1])
+            w = int(feature.get_shape()[2])
 
         # location
         loc_pred_num = anchor_num * 4
@@ -67,7 +68,7 @@ class SSDModel(ModelDesc):
 
         # class prediction
         cls_pred_num = anchor_num * (cfg.n_classes + 1)
-        cls_pred = Conv2D('conv_loc', feature, cls_pred_num, 3)
+        cls_pred = Conv2D('conv_cls', feature, cls_pred_num, 3)
         if self.data_format == 'NCHW':
             loc_pred = tf.transpose(cls_pred, [0, 2, 3, 1])
         # cls_pred = tf.reshape(cls_pred, [-1, h, w, anchor_num, (cfg.n_classes + 1)])
@@ -85,7 +86,7 @@ class SSDModel(ModelDesc):
         """
 
     def _build_graph(self, inputs):
-        image = inputs[0]
+        image, conf_label, loc_label = inputs
         self.batch_size = tf.shape(image)[0]
 
         tf.summary.image('input-image', image, max_outputs=3)
@@ -104,17 +105,29 @@ class SSDModel(ModelDesc):
 
         loc_pred_list = []
         cls_pred_list = []
-        for feature_idx, feature in features:
-            loc_pred, cls_pred = self.ssd_multibox_layer(feature_idx, feature)
+        for feature_idx, feature in enumerate(features):
+            with tf.variable_scope('feature_layer_%d' % feature_idx):
+                loc_pred, cls_pred = self.ssd_multibox_layer(feature_idx, feature)
             loc_pred_list.append(loc_pred)
             cls_pred_list.append(cls_pred)
+
+        import pdb
+        pdb.set_trace()
 
         loc_pred = tf.concat(loc_pred_list, axis=1, name='loc_pred')
         cls_pred = tf.concat(cls_pred_list, axis=1, name='cls_pred')
 
         # the loss part of SSD
-        # self.cost = tf.add_n([loss, wd_cost], name='cost')
-        self.cost = tf.reduce_sum(loc_pred, name='cost')
+        # location loss
+        pos_mask = tf.stop_gradient(tf.not_equal(conf_label, 0))
+        loc_mask_label = tf.boolean_mask(loc_label, pos_mask)
+        loc_mask_pred = tf.boolean_mask(loc_pred, pos_mask)
+        loc_loss = tf.losses.huber_loss(loc_mask_label, loc_mask_pred, delta=1.0)
+        # confidence loss
+        conf_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_pred, labels=conf_label)
+        # cost
+        nr_pos = tf.stop_gradient(tf.count_nonzero(conf_label, dtype=tf.int32))
+        self.cost = tf.truediv(loc_loss + conf_loss, tf.to_float(nr_pos))
 
     def _get_optimizer(self):
         lr = get_scalar_var('learning_rate', 1e-4, summary=True)

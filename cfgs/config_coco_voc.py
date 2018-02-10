@@ -1,5 +1,6 @@
 from easydict import EasyDict as edict
 import numpy as np
+from .config_utils import *
 
 cfg = edict()
 
@@ -31,6 +32,8 @@ cfg.classes_name =  ["aeroplane", "bicycle", "bird", "boat",
                      "horse", "motorbike", "person", "pottedplant",
                      "sheep", "sofa", "train","tvmonitor"]
 
+cfg.feat_shapes = [(38, 38), (19, 19), (10, 10), (5, 5), (3, 3), (1, 1)]
+
 cfg.anchor_sizes = [[0.1, np.sqrt(0.1 * 0.34)],
                     [0.34, np.sqrt(0.34 * 0.48)],
                     [0.48, np.sqrt(0.48 * 0.62)],
@@ -47,6 +50,15 @@ cfg.anchor_ratios = [[2, 0.5],
                      [2, 0.5]]
 cfg.anchor_ratios = np.asarray(cfg.anchor_ratios)
 
+cfg.anchor_steps=[8, 16, 32, 64, 100, 300]
+
+cfg.all_anchors = ssd_anchor_all_layers([cfg.img_size, cfg.img_size],
+                                        cfg.feat_shapes,
+                                        cfg.anchor_sizes,
+                                        cfg.anchor_ratios,
+                                        cfg.anchor_steps)
+
+cfg.tot_anchor_num = cfg.all_anchors.shape[0]
 
 cfg.classes_num = { }
 for idx, name in enumerate(cfg.classes_name):

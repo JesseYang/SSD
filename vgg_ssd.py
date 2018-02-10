@@ -116,6 +116,8 @@ if __name__ == '__main__':
     if args.flops:
         input_desc = [
             InputDesc(tf.uint8, [1, cfg.img_h, cfg.img_w, 3], 'input'),
+            InputDesc(tf.int32, [None, cfg.tot_anchor_num], 'conf_label'),
+            InputDesc(tf.float32, [None, cfg.tot_anchor_num, 4], 'loc_label')
         ]
         input = PlaceholderInput()
         input.setup(input_desc)

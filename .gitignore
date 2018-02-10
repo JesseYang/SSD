@@ -3,3 +3,4 @@
 coco
 voc
 *.swp
+.ipynb_checkpoints
