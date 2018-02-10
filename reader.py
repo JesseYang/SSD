@@ -70,8 +70,38 @@ class Data(RNGDataFlow):
             # flip around the vertical axis
             image = cv2.flip(image, flipCode=1)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
         image = cv2.resize(image, (image_width, image_height))
+
+        anchor_iou = np.zeros((cfg.tot_anchor_num, ))
+        anchor_cls = np.zeros((cfg.tot_anchor_num, ))
+        anchor_loc = np.zeros((cfg.tot_anchor_num, 4))
+
+        i = 1
+        while i < len(record):
+            # for each ground truth box
+            xmin = record[i]
+            ymin = record[i + 1]
+            xmax = record[i + 2]
+            ymax = record[i + 3]
+            if self.affine_trans:
+                box = np.asarray([xmin, ymin, xmax, ymax])
+                box = box * scale
+                box[0::2] -= offx
+                box[1::2] -= offy
+                xmin = np.maximum(0, box[0])
+                ymin = np.maximum(1, box[1])
+                xmax = np.minimum(w - 1, box[2])
+                ymax = np.minimum(h - 1, box[3])
+            if hflip:
+                xmin = w - 1 - xmin
+                xmax = w - 1 - xmax
+                tmp = xmin
+                xmin = xmax
+                xmax = tmp
+            class_num = int(record[i + 4])
+            i += 5
+
+            
 
         return [image]
 
