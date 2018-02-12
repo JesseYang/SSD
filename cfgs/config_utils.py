@@ -23,15 +23,15 @@ def ssd_anchor_one_layer(img_shape, feat_shape, sizes, ratios, step, offset=0.5,
 
     y_reshape = np.reshape(y, (feat_shape[0] * feat_shape[1], 1))
     x_reshape = np.reshape(x, (feat_shape[0] * feat_shape[1], 1))
-    yx = np.concatenate([y_reshape, x_reshape], axis=1)
-    yx4 = np.repeat(yx, len(sizes) + len(ratios), axis=0)
+    xy = np.concatenate([x_reshape, y_reshape], axis=1)
+    xy4 = np.repeat(xy, len(sizes) + len(ratios), axis=0)
 
-    hw = np.concatenate([h, w], axis=1)
+    wh = np.concatenate([w, h], axis=1)
 
-    hw_tile = np.tile(hw, (feat_shape[0] * feat_shape[0], 1))
-    yxhw = np.concatenate([yx4, hw_tile], axis=1)
+    wh_tile = np.tile(wh, (feat_shape[0] * feat_shape[0], 1))
+    xywh = np.concatenate([xy4, wh_tile], axis=1)
 
-    return yxhw
+    return xywh
 
 def ssd_anchor_all_layers(img_shape, layers_shape, anchor_sizes, anchor_ratios, anchor_steps, offset=0.5, dtype=np.float32):
     layer_anchors = []

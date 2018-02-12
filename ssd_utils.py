@@ -147,7 +147,7 @@ class SSDModel(ModelDesc):
             fnmask = tf.cast(neg_mask, dtype)
 
             pos_conf_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_pred, labels=conf_label)
-            pos_conf_loss = tf.reduce_sum(pos_conf_loss * pnmask, name='pos_conf_loss')
+            pos_conf_loss = tf.reduce_sum(pos_conf_loss * fpmask, name='pos_conf_loss')
 
             neg_conf_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_pred, labels=no_classes)
             neg_conf_loss = tf.reduce_sum(neg_conf_loss * fnmask, name='neg_conf_loss')
@@ -156,8 +156,6 @@ class SSDModel(ModelDesc):
         else:
             conf_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_pred, labels=conf_label))
         # cost
-        import pdb
-        pdb.set_trace()
         self.cost = tf.truediv(loc_loss + conf_loss, tf.to_float(nr_pos))
 
     def _get_optimizer(self):
@@ -280,8 +278,6 @@ def get_config(args, model):
 
       ScheduledHyperParamSetter('learning_rate',
                                 cfg.lr_schedule),
-      ScheduledHyperParamSetter('unseen_scale',
-                                [(0, cfg.unseen_scale), (cfg.unseen_epochs, 0)]),
       HumanHyperParamSetter('learning_rate'),
     ]
     if cfg.mAP == True:
@@ -293,6 +289,6 @@ def get_config(args, model):
         dataflow=ds_train,
         callbacks=callbacks,
         model=model,
-        steps_per_epoch=3620,
+        # steps_per_epoch=3620,
         max_epoch=cfg.max_epoch,
     )

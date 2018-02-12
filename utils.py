@@ -49,6 +49,14 @@ def encode_box(gt_box, anchor_box):
     h = np.log(gt_box.h / anchor_box.h)
     return np.asarray([cx, cy, w, h])
 
+def decode_box(loc_pred, anchor_box):
+    cx, cy, w, h = loc_pred
+    box_cx = cx * anchor_box.w + anchor_box.x
+    box_cy = cy * anchor_box.h + anchor_box.y
+    box_w = np.exp(w) * anchor_box.w
+    box_h = np.exp(h) * anchor_box.h
+    return Box(box_cx, box_cy, box_w, box_h)
+
 def overlap(x1, len1, x2, len2):
     len1_half = len1 / 2
     len2_half = len2 / 2

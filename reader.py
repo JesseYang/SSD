@@ -113,7 +113,7 @@ class Data(RNGDataFlow):
                     anchor_cls[anchor_idx] = class_num
                     anchor_loc[anchor_idx] = encode_box(gt_box, anchor_box)
 
-        return [image, anchor_iou, anchor_cls, anchor_loc]
+        return [image, anchor_cls, anchor_loc]
 
     def get_data(self):
         idxs = np.arange(len(self.imglist))
