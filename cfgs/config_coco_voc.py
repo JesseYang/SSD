@@ -72,10 +72,14 @@ cfg.iou_th = 0.5
 cfg.nms = True
 cfg.nms_th = 0.45
 
+cfg.hard_sample_mining = True
+
 cfg.mAP = True
 
 cfg.max_epoch = 160
 cfg.size_th = 0.1
+
+cfg.neg_ratio = 3
 
 cfg.gt_from_xml = True
 cfg.gt_format = "voc"

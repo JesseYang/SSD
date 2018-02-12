@@ -12,19 +12,17 @@ import json
 import uuid
 try:
     from .cfgs.config import cfg
-    from .utils import Box, box_iou
+    from .utils import Box, box_iou, encode_box
 except Exception:
     from cfgs.config import cfg
-    from utils import Box, box_iou
+    from utils import Box, box_iou, encode_box
 
 from tensorpack import *
 
 
 class Data(RNGDataFlow):
-    def __init__(self, filename_list, shuffle, flip, affine_trans, use_multi_scale, period):
+    def __init__(self, filename_list, shuffle, flip, affine_trans):
         self.filename_list = filename_list
-        self.use_multi_scale = use_multi_scale
-        self.period = period
 
         if isinstance(filename_list, list) == False:
             filename_list = [filename_list]
@@ -101,9 +99,21 @@ class Data(RNGDataFlow):
             class_num = int(record[i + 4])
             i += 5
 
-            
+            xmin = xmin / w
+            xmax = xmax / w
+            ymin = ymin / h
+            ymax = ymax / h
 
-        return [image]
+            for anchor_idx, anchor in enumerate(cfg.all_anchors):
+                gt_box = Box(xmin, ymin, xmax, ymax, mode='XYXY')
+                anchor_box = Box(*anchor)
+                iou = box_iou(gt_box, anchor_box)
+                if iou >= cfg.iou_th and iou > anchor_iou[anchor_idx]:
+                    anchor_iou[anchor_idx] = iou
+                    anchor_cls[anchor_idx] = class_num
+                    anchor_loc[anchor_idx] = encode_box(gt_box, anchor_box)
+
+        return [image, anchor_iou, anchor_cls, anchor_loc]
 
     def get_data(self):
         idxs = np.arange(len(self.imglist))
@@ -170,11 +180,10 @@ def generate_gt_result(test_path, gt_dir="result_gt", overwrite=True):
                     f.write(' '.join(line) + '\n')
 
 if __name__ == '__main__':
-    df = Data('doc_train.txt', shuffle=False, flip=False, affine_trans=False, use_multi_scale=True, period=8*10)
+    df = Data('voc_2007_train.txt', shuffle=False, flip=False, affine_trans=False)
     df.reset_state()
     count = 0
     while count < 5:
         count += 1
         g = df.get_data()
         pb = next(g)
-        #print(i)

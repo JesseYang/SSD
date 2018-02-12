@@ -34,10 +34,9 @@ except Exception:
 
 class SSDModel(ModelDesc):
 
-    def __init__(self, data_format="NHWC", multi_scale=False):
+    def __init__(self, data_format="NHWC"):
         super(SSDModel, self).__init__()
         self.data_format = data_format
-        self.multi_scale = multi_scale
 
     def _get_inputs(self):
         return [InputDesc(tf.uint8, [None, cfg.img_h, cfg.img_w, 3], 'input'),
@@ -111,22 +110,54 @@ class SSDModel(ModelDesc):
             loc_pred_list.append(loc_pred)
             cls_pred_list.append(cls_pred)
 
-        import pdb
-        pdb.set_trace()
-
         loc_pred = tf.concat(loc_pred_list, axis=1, name='loc_pred')
         cls_pred = tf.concat(cls_pred_list, axis=1, name='cls_pred')
 
         # the loss part of SSD
+        nr_pos = tf.stop_gradient(tf.count_nonzero(conf_label, dtype=tf.int32))
         # location loss
         pos_mask = tf.stop_gradient(tf.not_equal(conf_label, 0))
+        neg_mask = tf.stop_gradient(tf.equal(conf_label, 0))
         loc_mask_label = tf.boolean_mask(loc_label, pos_mask)
         loc_mask_pred = tf.boolean_mask(loc_pred, pos_mask)
         loc_loss = tf.losses.huber_loss(loc_mask_label, loc_mask_pred, delta=1.0)
         # confidence loss
-        conf_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_pred, labels=conf_label)
+        if cfg.hard_sample_mining:
+
+            dtype = cls_pred.dtype
+            fpmask = tf.cast(pos_mask, dtype)
+            fnmask = tf.cast(neg_mask, dtype)
+            no_classes = tf.cast(pos_mask, tf.int32)
+
+            predictions = tf.nn.softmax(cls_pred)
+
+            neg_predictions = tf.where(neg_mask,
+                                       predictions[:, :, 0],
+                                       1. - fnmask)
+
+            neg_pred_flat = tf.reshape(neg_predictions, [-1])
+
+            max_neg_entries = tf.cast(tf.reduce_sum(fnmask), tf.int32)
+            nr_neg = tf.cast(cfg.neg_ratio * nr_pos, tf.int32) + self.batch_size
+            nr_neg = tf.minimum(nr_neg, max_neg_entries)
+
+            val, idxes = tf.nn.top_k(-neg_pred_flat, k=nr_neg)
+            max_hard_pred = -val[-1]
+            neg_mask = tf.logical_and(neg_mask, neg_predictions <= max_hard_pred)
+            fnmask = tf.cast(neg_mask, dtype)
+
+            pos_conf_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_pred, labels=conf_label)
+            pos_conf_loss = tf.reduce_sum(pos_conf_loss * pnmask, name='pos_conf_loss')
+
+            neg_conf_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_pred, labels=no_classes)
+            neg_conf_loss = tf.reduce_sum(neg_conf_loss * fnmask, name='neg_conf_loss')
+
+            conf_loss = pos_conf_loss + neg_conf_loss
+        else:
+            conf_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_pred, labels=conf_label))
         # cost
-        nr_pos = tf.stop_gradient(tf.count_nonzero(conf_label, dtype=tf.int32))
+        import pdb
+        pdb.set_trace()
         self.cost = tf.truediv(loc_loss + conf_loss, tf.to_float(nr_pos))
 
     def _get_optimizer(self):
@@ -199,11 +230,11 @@ class CalMAP(Inferencer):
         return { "mAP": mAP, "test_loss": np.mean(self.loss) }
 
 
-def get_data(train_or_test, multi_scale, batch_size):
+def get_data(train_or_test, batch_size):
     isTrain = train_or_test == 'train'
 
     filename_list = cfg.train_list if isTrain else cfg.test_list
-    ds = Data(filename_list, shuffle=isTrain, flip=isTrain, affine_trans=isTrain, use_multi_scale=isTrain and multi_scale, period=batch_size*10)
+    ds = Data(filename_list, shuffle=isTrain, flip=isTrain, affine_trans=isTrain)
 
     if isTrain:
         augmentors = [
@@ -228,7 +259,7 @@ def get_data(train_or_test, multi_scale, batch_size):
         ]
     ds = AugmentImageComponent(ds, augmentors)
     ds = BatchData(ds, batch_size, remainder=not isTrain)
-    if isTrain and multi_scale == False:
+    if isTrain:
         ds = PrefetchDataZMQ(ds, min(6, multiprocessing.cpu_count()))
     return ds
 
@@ -240,8 +271,8 @@ def get_config(args, model):
     else:
         batch_size = int(args.batch_size)
 
-    ds_train = get_data('train', args.multi_scale, batch_size)
-    ds_test = get_data('test', False, batch_size)
+    ds_train = get_data('train', batch_size)
+    ds_test = get_data('test', batch_size)
 
     callbacks = [
       ModelSaver(),

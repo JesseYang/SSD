@@ -42,6 +42,13 @@ class Box():
             self.w = p3 - p1
             self.h = p4 - p2
 
+def encode_box(gt_box, anchor_box):
+    cx = (gt_box.x - anchor_box.x) / anchor_box.w
+    cy = (gt_box.y - anchor_box.y) / anchor_box.h
+    w = np.log(gt_box.w / anchor_box.w)
+    h = np.log(gt_box.h / anchor_box.h)
+    return np.asarray([cx, cy, w, h])
+
 def overlap(x1, len1, x2, len2):
     len1_half = len1 / 2
     len2_half = len2 / 2
