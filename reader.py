@@ -1,4 +1,5 @@
 import os, sys, shutil
+import time
 import pickle
 import numpy as np
 import random
@@ -65,16 +66,17 @@ class Data(RNGDataFlow):
             image = image[offy: (offy + h), offx: (offx + w)]
 
         if hflip:
-            # flip around the vertical axis
             image = cv2.flip(image, flipCode=1)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         image = cv2.resize(image, (image_width, image_height))
 
         anchor_iou = np.zeros((cfg.tot_anchor_num, ))
-        anchor_cls = np.zeros((cfg.tot_anchor_num, ))
+        # the backgound class is the last class
+        anchor_cls = np.ones((cfg.tot_anchor_num, )) * cfg.class_num
         anchor_loc = np.zeros((cfg.tot_anchor_num, 4))
 
         i = 1
+        box_idx = 0
         while i < len(record):
             # for each ground truth box
             xmin = record[i]
@@ -104,9 +106,18 @@ class Data(RNGDataFlow):
             ymin = ymin / h
             ymax = ymax / h
 
+            gt_box = Box(xmin, ymin, xmax, ymax, mode='XYXY')
+
+            gt_box_a = gt_box.w * gt_box.h
+
             for anchor_idx, anchor in enumerate(cfg.all_anchors):
-                gt_box = Box(xmin, ymin, xmax, ymax, mode='XYXY')
-                anchor_box = Box(*anchor)
+                if gt_box_a > anchor[4] or gt_box_a < anchor[5]:
+                    continue
+                if np.abs(gt_box.x - anchor[0]) > min(gt_box.w, anchor[2]) / 2:
+                    continue
+                if np.abs(gt_box.y - anchor[1]) > min(gt_box.h, anchor[3]) / 2:
+                    continue
+                anchor_box = Box(*anchor[:4])
                 iou = box_iou(gt_box, anchor_box)
                 if iou >= cfg.iou_th and iou > anchor_iou[anchor_idx]:
                     anchor_iou[anchor_idx] = iou
@@ -182,8 +193,12 @@ def generate_gt_result(test_path, gt_dir="result_gt", overwrite=True):
 if __name__ == '__main__':
     df = Data('voc_2007_train.txt', shuffle=False, flip=False, affine_trans=False)
     df.reset_state()
-    count = 0
-    while count < 5:
-        count += 1
-        g = df.get_data()
-        pb = next(g)
+
+    g = df.get_data()
+    pb = next(g)
+
+    # for idx in range(100):
+    #     if idx % 10 == 0:
+    #         print(time.time())
+    #     g = df.get_data()
+    #     pb = next(g)

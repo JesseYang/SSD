@@ -38,12 +38,6 @@ class SSDModel(ModelDesc):
         super(SSDModel, self).__init__()
         self.data_format = data_format
 
-    def _get_inputs(self):
-        return [InputDesc(tf.uint8, [None, cfg.img_h, cfg.img_w, 3], 'input'),
-                InputDesc(tf.int32, [None, cfg.tot_anchor_num], 'conf_label'),
-                InputDesc(tf.float32, [None, cfg.tot_anchor_num, 4], 'loc_label')
-                ]
-
     def ssd_multibox_layer(self, feature_idx, feature):
         anchor_sizes = cfg.anchor_sizes[feature_idx]
         anchor_ratios = cfg.anchor_ratios[feature_idx]
@@ -75,6 +69,12 @@ class SSDModel(ModelDesc):
 
         return loc_pred, cls_pred
 
+    def _get_inputs(self):
+        return [InputDesc(tf.uint8, [None, cfg.img_h, cfg.img_w, 3], 'input'),
+                InputDesc(tf.int32, [None, cfg.tot_anchor_num], 'conf_label'),
+                InputDesc(tf.float32, [None, cfg.tot_anchor_num, 4], 'loc_label')
+                ]
+
     @abstractmethod
     def get_logits(self, image):
         """
@@ -85,6 +85,7 @@ class SSDModel(ModelDesc):
         """
 
     def _build_graph(self, inputs):
+        # image, gt_boxes_loc, gt_boxes_label = inputs
         image, conf_label, loc_label = inputs
         self.batch_size = tf.shape(image)[0]
 
@@ -155,16 +156,21 @@ class SSDModel(ModelDesc):
             conf_loss = pos_conf_loss + neg_conf_loss
         else:
             conf_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_pred, labels=conf_label))
-        # cost
-        self.cost = tf.truediv(loc_loss + conf_loss, tf.to_float(nr_pos))
+        # cost with weight decay
+        if cfg.weight_decay > 0:
+            wd_cost = regularize_cost('.*/W', l2_regularizer(cfg.weight_decay), name='l2_regularize_loss')
+        else:
+            wd_cost = tf.constant(0.0)
+        loss = tf.truediv(loc_loss + conf_loss, tf.to_float(nr_pos))
+        self.cost = tf.add_n([loss, wd_cost], name='cost')
 
     def _get_optimizer(self):
-        lr = get_scalar_var('learning_rate', 1e-4, summary=True)
+        lr = get_scalar_var('learning_rate', 1e-3, summary=True)
         return tf.train.MomentumOptimizer(lr, 0.9, use_nesterov=True)
 
 class CalMAP(Inferencer):
     def __init__(self, test_path):
-        self.names = ["pred_x", "pred_y", "pred_w", "pred_h", "pred_conf", "pred_prob", "ori_shape", "loss"]
+        self.names = ["loc_pred", "cls_pred"]
         self.test_path = test_path
         self.gt_dir = "result_gt"
         if os.path.isdir(self.gt_dir):
@@ -277,18 +283,20 @@ def get_config(args, model):
 
 
       ScheduledHyperParamSetter('learning_rate',
-                                cfg.lr_schedule),
+                                cfg.lr_schedule,
+                                step_based=True),
       HumanHyperParamSetter('learning_rate'),
     ]
     if cfg.mAP == True:
         callbacks.append(EnableCallbackIf(PeriodicTrigger(InferenceRunner(ds_test, [CalMAP(cfg.test_list)]), every_k_epochs=3),
                                           lambda x : x.epoch_num >= args.map_start_epoch))
+
     if args.debug:
       callbacks.append(HookToCallback(tf_debug.LocalCLIDebugHook()))
     return TrainConfig(
         dataflow=ds_train,
         callbacks=callbacks,
         model=model,
-        # steps_per_epoch=3620,
-        max_epoch=cfg.max_epoch,
+        steps_per_epoch=cfg.train_sample_num // args.batch_size,
+        max_epoch=args.itr // (cfg.train_sample_num // args.batch_size),
     )

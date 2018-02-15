@@ -148,57 +148,39 @@ def postprocess(predictions, image_path=None, image_shape=None, det_th=None):
     ori_height = image_shape[0]
     ori_width = image_shape[1]
 
-    [pred_x, pred_y, pred_w, pred_h, pred_conf, pred_prob] = predictions
+    [loc_pred, cls_pred] = predictions
 
-    _, box_n, klass_num, grid_h, grid_w = pred_prob.shape
-
-    pred_conf_tile = np.tile(pred_conf, (1, 1, klass_num, 1, 1))
-    klass_conf = pred_prob * pred_conf_tile
+    _, box_n, klass_num = cls_pred.shape
 
     width_rate = ori_width / float(cfg.img_w)
     height_rate = ori_height / float(cfg.img_h)
 
     boxes = {}
     for n in range(box_n):
-        for gh in range(grid_h):
-            for gw in range(grid_w):
+        klass = np.argmax(cls_pred[0, n])
+        # skip the background predictions
+        if klass == cfg.class_num:
+            continue
+        pred_box = decode_box(loc_pred[0, n], anchor_box[0, n]):
 
-                k = np.argmax(klass_conf[0, n, :, gh, gw])
-                if klass_conf[0, n, k, gh, gw] < (det_th or cfg.det_th):
-                    continue
 
-                anchor = cfg.anchors[n]
-                w = pred_w[0, n, 0, gh, gw]
-                h = pred_h[0, n, 0, gh, gw]
-                x = pred_x[0, n, 0, gh, gw]
-                y = pred_y[0, n, 0, gh, gw]
 
-                center_w_cell = gw + x
-                center_h_cell = gh + y
-                box_w_cell = np.exp(w) * anchor[0]
-                box_h_cell = np.exp(h) * anchor[1]
+        xmin = float(pred_box.x - pred_box.w / 2) * ori_width
+        ymin = float(pred_box.y - pred_box.h / 2) * ori_height
+        xmax = float(pred_box.x + pred_box.w / 2) * ori_width
+        ymax = float(pred_box.y + pred_box.h / 2) * ori_height
+        xmin = np.max([xmin, 0])
+        ymin = np.max([ymin, 0])
+        xmax = np.min([xmax, ori_width])
+        ymax = np.min([ymax, ori_height])
 
-                center_w_pixel = center_w_cell * 32
-                center_h_pixel = center_h_cell * 32
-                box_w_pixel = box_w_cell * 32
-                box_h_pixel = box_h_cell * 32
+        klass_name = cfg.classes_name[klass]
+        if klass_name not in boxes.keys():
+            boxes[klass_name] = []
 
-                xmin = float(center_w_pixel - box_w_pixel // 2)
-                ymin = float(center_h_pixel - box_h_pixel // 2)
-                xmax = float(center_w_pixel + box_w_pixel // 2)
-                ymax = float(center_h_pixel + box_h_pixel // 2)
-                xmin = np.max([xmin, 0]) * width_rate
-                ymin = np.max([ymin, 0]) * height_rate
-                xmax = np.min([xmax, float(cfg.img_w)]) * width_rate
-                ymax = np.min([ymax, float(cfg.img_h)]) * height_rate
+        box = [cls_pred[0, n, klass], xmin, ymin, xmax, ymax]
 
-                klass = cfg.classes_name[k]
-                if klass not in boxes.keys():
-                    boxes[klass] = []
-
-                box = [klass_conf[0, n, k, gh, gw], xmin, ymin, xmax, ymax]
-
-                boxes[klass].append(box)
+        boxes[klass].append(box)
 
     # do non-maximum-suppresion
     nms_boxes = {}

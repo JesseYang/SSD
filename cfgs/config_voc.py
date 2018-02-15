@@ -25,6 +25,8 @@ cfg.classes_name =  ["aeroplane", "bicycle", "bird", "boat",
                      "horse", "motorbike", "person", "pottedplant",
                      "sheep", "sofa", "train","tvmonitor"]
 
+cfg.class_num = len(cfg.classes_name)
+
 cfg.feat_shapes = [(38, 38), (19, 19), (10, 10), (5, 5), (3, 3), (1, 1)]
 
 cfg.anchor_sizes = [[0.1, np.sqrt(0.1 * 0.34)],
@@ -57,7 +59,7 @@ cfg.classes_num = { }
 for idx, name in enumerate(cfg.classes_name):
     cfg.classes_num[name] = idx
 
-cfg.train_list = ["coco_voc_train.txt", "coco_voc_val.txt", "voc_2007_train.txt", "voc_2012_train.txt", "voc_2007_val.txt", "voc_2012_val.txt"]
+cfg.train_list = ["voc_2007_train.txt", "voc_2012_train.txt", "voc_2007_val.txt", "voc_2012_val.txt"]
 cfg.test_list = "voc_2007_test_without_diff.txt"
 
 cfg.train_sample_num = 0
@@ -72,7 +74,7 @@ cfg.nms_th = 0.45
 
 cfg.hard_sample_mining = True
 
-cfg.mAP = False
+cfg.mAP = True
 
 cfg.max_epoch = 160
 cfg.size_th = 0.1

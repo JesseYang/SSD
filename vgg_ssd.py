@@ -17,6 +17,7 @@ from tensorpack import *
 from tensorpack.tfutils.symbolic_functions import *
 from tensorpack.tfutils.common import get_tf_version_number
 from tensorpack.tfutils.summary import *
+from tensorpack.utils.gpu import get_nr_gpu
 
 try:
     from .cfgs.config import cfg
@@ -102,7 +103,8 @@ class VGGSSD(SSDModel):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--gpu', help='comma separated list of GPU(s) to use.', default='0,1')
-    parser.add_argument('--batch_size', help='batch size', default=64)
+    parser.add_argument('--batch_size', help='batch size', type=int, default=32)
+    parser.add_argument('--itr', help='number of iterations', type=int, default=50000)
     parser.add_argument('--load', help='load model')
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--logdir', help="directory of logging", default=None)
@@ -139,7 +141,10 @@ if __name__ == '__main__':
             config.nr_tower = len(args.gpu.split(','))
 
         if args.load:
-            config.session_init = SaverRestore(args.load)
+            if args.load.endswith('npz'):
+                config.session_init = DictRestore(dict(np.load(args.load)))
+            else:
+                config.session_init = SaverRestore(args.load)
 
         trainer = SyncMultiGPUTrainerParameterServer(max(get_nr_gpu(), 1))
         launch_train_with_config(config, trainer)
