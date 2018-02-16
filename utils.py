@@ -161,9 +161,7 @@ def postprocess(predictions, image_path=None, image_shape=None, det_th=None):
         # skip the background predictions
         if klass == cfg.class_num:
             continue
-        pred_box = decode_box(loc_pred[0, n], anchor_box[0, n]):
-
-
+        pred_box = decode_box(loc_pred[0, n], anchor_box[0, n])
 
         xmin = float(pred_box.x - pred_box.w / 2) * ori_width
         ymin = float(pred_box.y - pred_box.h / 2) * ori_height
