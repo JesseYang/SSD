@@ -161,7 +161,10 @@ class SSDModel(ModelDesc):
             wd_cost = regularize_cost('.*/W', l2_regularizer(cfg.weight_decay), name='l2_regularize_loss')
         else:
             wd_cost = tf.constant(0.0)
-        loss = tf.truediv(loc_loss + conf_loss, tf.to_float(nr_pos))
+        loc_loss_per_pos = tf.truediv(loc_loss, tf.to_float(nr_pos))
+        conf_loss_per_pos = tf.truediv(conf_loss, tf.to_float(nr_pos))
+        loss = loc_loss_per_pos + conf_loss_per_pos
+        add_moving_summary(loc_loss_per_pos, conf_loss_per_pos, loss, wd_cost)
         self.cost = tf.add_n([loss, wd_cost], name='cost')
 
     def _get_optimizer(self):
