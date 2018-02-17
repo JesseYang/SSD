@@ -6,3 +6,4 @@ voc
 .ipynb_checkpoints
 train_log
 *.png
+annotations_cache

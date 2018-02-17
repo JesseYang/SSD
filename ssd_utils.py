@@ -119,12 +119,16 @@ class SSDModel(ModelDesc):
 
         # the loss part of SSD
         nr_pos = tf.stop_gradient(tf.count_nonzero(conf_label, dtype=tf.int32))
+        nr_pos = tf.identity(nr_pos, name='nr_pos')
         # location loss, the last class is the background class
         pos_mask = tf.stop_gradient(tf.not_equal(conf_label, 0))
         neg_mask = tf.stop_gradient(tf.equal(conf_label, 0))
         loc_mask_label = tf.boolean_mask(loc_label, pos_mask)
+        loc_mask_label = tf.identity(loc_mask_label, name='loc_mask_label')
         loc_mask_pred = tf.boolean_mask(loc_pred, pos_mask)
-        loc_loss = tf.losses.huber_loss(loc_mask_label, loc_mask_pred, delta=1.0)
+        loc_mask_pred = tf.identity(loc_mask_pred, name='loc_mask_pred')
+        loc_loss = tf.losses.huber_loss(loc_mask_label, loc_mask_pred, reduction=tf.losses.Reduction.SUM)
+        loc_loss = tf.identity(loc_loss, 'tot_loc_loss')
         # confidence loss
         if cfg.hard_sample_mining:
 
@@ -155,6 +159,7 @@ class SSDModel(ModelDesc):
             neg_conf_loss = tf.reduce_sum(neg_conf_loss * fnmask, name='neg_conf_loss')
 
             conf_loss = pos_conf_loss + neg_conf_loss
+            add_moving_summary(pos_conf_loss, neg_conf_loss)
         else:
             conf_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_pred, labels=conf_label))
         # cost with weight decay
@@ -293,7 +298,7 @@ def get_config(args, model):
       HumanHyperParamSetter('learning_rate'),
     ]
     if cfg.mAP == True:
-        callbacks.append(PeriodicTrigger(InferenceRunner(ds_test, [CalMAP(cfg.test_list)]), every_k_epochs=1))
+        callbacks.append(PeriodicTrigger(InferenceRunner(ds_test, [CalMAP(cfg.test_list)]), every_k_epochs=3))
 
     if args.debug:
       callbacks.append(HookToCallback(tf_debug.LocalCLIDebugHook()))

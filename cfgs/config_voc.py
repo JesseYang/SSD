@@ -74,7 +74,7 @@ cfg.nms_th = 0.45
 
 cfg.hard_sample_mining = True
 
-cfg.mAP = True
+cfg.mAP = False
 
 cfg.max_epoch = 160
 cfg.size_th = 0.1
