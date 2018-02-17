@@ -11,6 +11,7 @@ import shutil
 import multiprocessing
 import json
 from abc import abstractmethod
+import time
 
 import tensorflow as tf
 from tensorflow.contrib.layers import variance_scaling_initializer
@@ -158,10 +159,13 @@ def postprocess(predictions, image_path=None, image_shape=None, det_th=None):
     boxes = {}
     for n in range(box_n):
         klass = np.argmax(cls_pred[0, n])
-        # skip the background predictions
-        if klass == cfg.class_num:
+        # the 0th class in prediction is the background
+        if klass == 0:
             continue
-        pred_box = decode_box(loc_pred[0, n], anchor_box[0, n])
+        # the class index in config file is 0-based
+        klass = klass - 1
+        anchor_box = Box(*cfg.all_anchors[n][:4])
+        pred_box = decode_box(loc_pred[0, n], anchor_box)
 
         xmin = float(pred_box.x - pred_box.w / 2) * ori_width
         ymin = float(pred_box.y - pred_box.h / 2) * ori_height
@@ -178,14 +182,14 @@ def postprocess(predictions, image_path=None, image_shape=None, det_th=None):
 
         box = [cls_pred[0, n, klass], xmin, ymin, xmax, ymax]
 
-        boxes[klass].append(box)
+        boxes[klass_name].append(box)
 
     # do non-maximum-suppresion
     nms_boxes = {}
     if cfg.nms == True:
-        for klass, k_boxes in boxes.items():
+        for klass_name, k_boxes in boxes.items():
             k_boxes = non_maximum_suppression(k_boxes, cfg.nms_th)
-            nms_boxes[klass] = k_boxes
+            nms_boxes[klass_name] = k_boxes
     else:
         nms_boxes = boxes
     

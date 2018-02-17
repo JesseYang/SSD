@@ -11,6 +11,7 @@ import shutil
 import multiprocessing
 import json
 from abc import abstractmethod
+import time
 
 import tensorflow as tf
 from tensorflow.contrib.layers import variance_scaling_initializer
@@ -72,7 +73,8 @@ class SSDModel(ModelDesc):
     def _get_inputs(self):
         return [InputDesc(tf.uint8, [None, cfg.img_h, cfg.img_w, 3], 'input'),
                 InputDesc(tf.int32, [None, cfg.tot_anchor_num], 'conf_label'),
-                InputDesc(tf.float32, [None, cfg.tot_anchor_num, 4], 'loc_label')
+                InputDesc(tf.float32, [None, cfg.tot_anchor_num, 4], 'loc_label'),
+                InputDesc(tf.float32, [None, 3], 'ori_shape'),
                 ]
 
     @abstractmethod
@@ -86,7 +88,7 @@ class SSDModel(ModelDesc):
 
     def _build_graph(self, inputs):
         # image, gt_boxes_loc, gt_boxes_label = inputs
-        image, conf_label, loc_label = inputs
+        image, conf_label, loc_label, ori_shape = inputs
         self.batch_size = tf.shape(image)[0]
 
         tf.summary.image('input-image', image, max_outputs=3)
@@ -112,11 +114,12 @@ class SSDModel(ModelDesc):
             cls_pred_list.append(cls_pred)
 
         loc_pred = tf.concat(loc_pred_list, axis=1, name='loc_pred')
-        cls_pred = tf.concat(cls_pred_list, axis=1, name='cls_pred')
+        cls_pred = tf.concat(cls_pred_list, axis=1)
+        predictions = tf.nn.softmax(cls_pred, name='cls_pred')
 
         # the loss part of SSD
         nr_pos = tf.stop_gradient(tf.count_nonzero(conf_label, dtype=tf.int32))
-        # location loss
+        # location loss, the last class is the background class
         pos_mask = tf.stop_gradient(tf.not_equal(conf_label, 0))
         neg_mask = tf.stop_gradient(tf.equal(conf_label, 0))
         loc_mask_label = tf.boolean_mask(loc_label, pos_mask)
@@ -129,8 +132,6 @@ class SSDModel(ModelDesc):
             fpmask = tf.cast(pos_mask, dtype)
             fnmask = tf.cast(neg_mask, dtype)
             no_classes = tf.cast(pos_mask, tf.int32)
-
-            predictions = tf.nn.softmax(cls_pred)
 
             neg_predictions = tf.where(neg_mask,
                                        predictions[:, :, 0],
@@ -161,9 +162,9 @@ class SSDModel(ModelDesc):
             wd_cost = regularize_cost('.*/W', l2_regularizer(cfg.weight_decay), name='l2_regularize_loss')
         else:
             wd_cost = tf.constant(0.0)
-        loc_loss_per_pos = tf.truediv(loc_loss, tf.to_float(nr_pos))
-        conf_loss_per_pos = tf.truediv(conf_loss, tf.to_float(nr_pos))
-        loss = loc_loss_per_pos + conf_loss_per_pos
+        loc_loss_per_pos = tf.truediv(loc_loss, tf.to_float(nr_pos), name='loc_loss')
+        conf_loss_per_pos = tf.truediv(conf_loss, tf.to_float(nr_pos), name='conf_loss')
+        loss = tf.add_n([loc_loss_per_pos, conf_loss_per_pos], name='loss')
         add_moving_summary(loc_loss_per_pos, conf_loss_per_pos, loss, wd_cost)
         self.cost = tf.add_n([loss, wd_cost], name='cost')
 
@@ -173,7 +174,7 @@ class SSDModel(ModelDesc):
 
 class CalMAP(Inferencer):
     def __init__(self, test_path):
-        self.names = ["loc_pred", "cls_pred"]
+        self.names = ["loc_pred", "cls_pred", "ori_shape", "loss"]
         self.test_path = test_path
         self.gt_dir = "result_gt"
         if os.path.isdir(self.gt_dir):
@@ -204,8 +205,8 @@ class CalMAP(Inferencer):
         self.cur_image_idx = 0
 
     def _on_fetches(self, output):
-        self.loss.append(output[7])
-        output = output[0:7]
+        self.loss.append(output[3])
+        output = output[0:3]
         for i in range(output[0].shape[0]):
             # for each ele in the batch
             image_path = self.image_path_list[self.cur_image_idx]
@@ -213,8 +214,9 @@ class CalMAP(Inferencer):
             image_id = os.path.basename(image_path).split('.')[0] if cfg.gt_format == "voc" else image_path
 
             cur_output = [ele[i] for ele in output]
-            predictions = [np.expand_dims(ele, axis=0) for ele in cur_output[0:6]]
-            image_shape = cur_output[6]
+            predictions = [np.expand_dims(ele, axis=0) for ele in cur_output[0:2]]
+            image_shape = cur_output[2]
+
 
             pred_results = postprocess(predictions, image_shape=image_shape)
             for class_name in pred_results.keys():
@@ -291,8 +293,7 @@ def get_config(args, model):
       HumanHyperParamSetter('learning_rate'),
     ]
     if cfg.mAP == True:
-        callbacks.append(EnableCallbackIf(PeriodicTrigger(InferenceRunner(ds_test, [CalMAP(cfg.test_list)]), every_k_epochs=3),
-                                          lambda x : x.epoch_num >= args.map_start_epoch))
+        callbacks.append(PeriodicTrigger(InferenceRunner(ds_test, [CalMAP(cfg.test_list)]), every_k_epochs=1))
 
     if args.debug:
       callbacks.append(HookToCallback(tf_debug.LocalCLIDebugHook()))

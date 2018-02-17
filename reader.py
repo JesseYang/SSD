@@ -72,7 +72,7 @@ class Data(RNGDataFlow):
 
         anchor_iou = np.zeros((cfg.tot_anchor_num, ))
         # the backgound class is the last class
-        anchor_cls = np.ones((cfg.tot_anchor_num, )) * cfg.class_num
+        anchor_cls = np.zeros((cfg.tot_anchor_num, )).astype(int)
         anchor_loc = np.zeros((cfg.tot_anchor_num, 4))
 
         i = 1
@@ -121,10 +121,11 @@ class Data(RNGDataFlow):
                 iou = box_iou(gt_box, anchor_box)
                 if iou >= cfg.iou_th and iou > anchor_iou[anchor_idx]:
                     anchor_iou[anchor_idx] = iou
-                    anchor_cls[anchor_idx] = class_num
+                    # the 0th class is the background, thus other classes' number should be pushed back 1
+                    anchor_cls[anchor_idx] = class_num + 1
                     anchor_loc[anchor_idx] = encode_box(gt_box, anchor_box)
 
-        return [image, anchor_cls, anchor_loc]
+        return [image, anchor_cls, anchor_loc, np.asarray(s)]
 
     def get_data(self):
         idxs = np.arange(len(self.imglist))
@@ -196,6 +197,9 @@ if __name__ == '__main__':
 
     g = df.get_data()
     pb = next(g)
+
+    import pdb
+    pdb.set_trace()
 
     # for idx in range(100):
     #     if idx % 10 == 0:

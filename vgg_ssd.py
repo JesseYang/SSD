@@ -119,7 +119,8 @@ if __name__ == '__main__':
         input_desc = [
             InputDesc(tf.uint8, [2, cfg.img_h, cfg.img_w, 3], 'input'),
             InputDesc(tf.int32, [2, cfg.tot_anchor_num], 'conf_label'),
-            InputDesc(tf.float32, [2, cfg.tot_anchor_num, 4], 'loc_label')
+            InputDesc(tf.float32, [2, cfg.tot_anchor_num, 4], 'loc_label'),
+            InputDesc(tf.float32, [1, 3], 'ori_shape'),
         ]
         input = PlaceholderInput()
         input.setup(input_desc)

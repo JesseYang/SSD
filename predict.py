@@ -21,17 +21,12 @@ except Exception:
     from utils import postprocess
 
 try:
-    from .darknet_yolo import DarknetYolo
-    from .darknet_yolo_lite import DarknetYoloLite
-    from .shufflenet_yolo import ShufflenetYolo
+    from .vgg_ssd import VGGSSD
 except Exception:
-    from darknet_yolo import DarknetYolo
-    from darknet_yolo_lite import DarknetYoloLite
-    from shufflenet_yolo import ShufflenetYolo
+    from vgg_ssd import VGGSSD
 
 def get_pred_func(args):
     sess_init = SaverRestore(args.model_path)
-    # if args.model == "vgg":
     model = VGGSSD()
     predict_config = PredictConfig(session_init=sess_init,
                                    model=model,
@@ -171,7 +166,6 @@ def generate_pred_images(image_paths, predict_func, crop, output_dir, det_th, en
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_path', help='path of the model waiting for validation.')
-    parser.add_argument('--model', choices=['darknet', 'darknet_lite', 'shufflenet'], help='the model used', default='darknet')
     parser.add_argument('--data_format', choices=['NCHW', 'NHWC'], default='NHWC')
     parser.add_argument('--input_path', help='path of the input image')
     parser.add_argument('--output_path', help='path of the output image', default='output.png')

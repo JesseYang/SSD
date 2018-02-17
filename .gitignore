@@ -5,3 +5,4 @@ voc
 *.swp
 .ipynb_checkpoints
 train_log
+*.png
