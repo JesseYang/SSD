@@ -7,11 +7,8 @@ cfg = edict()
 cfg.img_size = 300
 cfg.img_w = cfg.img_size
 cfg.img_h = cfg.img_size
-cfg.grid_w = 32
-cfg.grid_h = 32
 
 cfg.n_boxes = 5
-cfg.n_classes = 20
 
 cfg.threshold = 0.6
 
@@ -59,7 +56,7 @@ cfg.classes_num = { }
 for idx, name in enumerate(cfg.classes_name):
     cfg.classes_num[name] = idx
 
-cfg.train_list = ["voc_2007_train.txt", "voc_2012_train.txt", "voc_2007_val.txt", "voc_2012_val.txt"]
+cfg.train_list = ["voc_2007_train.txt", "voc_2007_val.txt"]
 cfg.test_list = "voc_2007_test_without_diff.txt"
 
 cfg.train_sample_num = 0
@@ -72,12 +69,11 @@ cfg.iou_th = 0.5
 cfg.nms = True
 cfg.nms_th = 0.45
 
-cfg.hard_sample_mining = True
+cfg.hard_sample_mining = False
 
 cfg.mAP = True
 
-cfg.max_epoch = 300
-cfg.size_th = 0.1
+cfg.max_epoch = 50000 // cfg.train_sample_num
 
 cfg.neg_ratio = 3
 

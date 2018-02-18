@@ -135,11 +135,12 @@ def predict_image(predict_func, det_th):
     anchor_loc = np.expand_dims(anchor_loc, axis=0)
     ori_shape = np.expand_dims(np.asarray(s), axis=0)
 
-    import pdb
-    pdb.set_trace()
-
     predictions = predict_func(image, anchor_cls, anchor_loc, ori_shape)
 
+    loc_pred, cls_pred, loc_mask_label, loc_mask_pred, tot_loc_loss, nr_pos, pos_conf_loss, neg_conf_loss = predictions
+
+    import pdb
+    pdb.set_trace()
 
     boxes = postprocess(predictions, image_path=input_path, det_th=det_th)
 

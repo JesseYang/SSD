@@ -61,12 +61,12 @@ class SSDModel(ModelDesc):
         loc_pred = tf.reshape(loc_pred, [-1, h * w * anchor_num, 4])
 
         # class prediction
-        cls_pred_num = anchor_num * (cfg.n_classes + 1)
+        cls_pred_num = anchor_num * (cfg.class_num + 1)
         cls_pred = Conv2D('conv_cls', feature, cls_pred_num, 3)
         if self.data_format == 'NCHW':
             loc_pred = tf.transpose(cls_pred, [0, 2, 3, 1])
-        # cls_pred = tf.reshape(cls_pred, [-1, h, w, anchor_num, (cfg.n_classes + 1)])
-        cls_pred = tf.reshape(cls_pred, [-1, h * w * anchor_num, (cfg.n_classes + 1)])
+        # cls_pred = tf.reshape(cls_pred, [-1, h, w, anchor_num, (cfg.class_num + 1)])
+        cls_pred = tf.reshape(cls_pred, [-1, h * w * anchor_num, (cfg.class_num + 1)])
 
         return loc_pred, cls_pred
 
@@ -298,7 +298,7 @@ def get_config(args, model):
       HumanHyperParamSetter('learning_rate'),
     ]
     if cfg.mAP == True:
-        callbacks.append(PeriodicTrigger(InferenceRunner(ds_test, [CalMAP(cfg.test_list)]), every_k_epochs=3))
+        callbacks.append(PeriodicTrigger(InferenceRunner(ds_test, [CalMAP(cfg.test_list)]), every_k_epochs=10))
 
     if args.debug:
       callbacks.append(HookToCallback(tf_debug.LocalCLIDebugHook()))

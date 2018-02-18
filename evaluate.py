@@ -266,7 +266,7 @@ def do_python_eval(res_prefix, verbose=True):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--test_path', help='path of the test file', default='voc_2007_test.txt')
+    parser.add_argument('--test_path', help='path of the test file', default='voc_2007_test_without_diff.txt')
     args = parser.parse_args()
 
     do_python_eval("result_pred/")
