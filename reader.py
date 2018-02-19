@@ -120,12 +120,16 @@ class Data(RNGDataFlow):
                 anchor_box = Box(*anchor[:4])
                 iou = box_iou(gt_box, anchor_box)
                 if iou >= cfg.iou_th and iou > anchor_iou[anchor_idx]:
-                    anchor_iou[anchor_idx] = iou
                     # the 0th class is the background, thus other classes' number should be pushed back 1
                     anchor_cls[anchor_idx] = class_num + 1
                     anchor_loc[anchor_idx] = encode_box(gt_box, anchor_box)
+                if iou > anchor_iou[anchor_idx]:
+                    anchor_iou[anchor_idx] = iou
 
-        return [image, anchor_cls, anchor_loc, np.asarray(s)]
+        anchor_neg_mask = (anchor_iou < cfg.neg_iou_th).astype(int)
+
+        # return [image, anchor_cls, anchor_loc, np.asarray(s)]
+        return [image, anchor_cls, anchor_neg_mask, anchor_loc, np.asarray(s)]
 
     def get_data(self):
         idxs = np.arange(len(self.imglist))

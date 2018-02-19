@@ -56,8 +56,9 @@ def draw_result(image, boxes):
 
             [conf, xmin, ymin, xmax, ymax] = k_box
 
-            label_height = 14
-            label_width = len(klass) * 10
+            label = "%s %.3f" % (klass, conf)
+            label_height = 16
+            label_width = len(label) * 10
  
             cv2.rectangle(image_result,
                           (int(xmin), int(ymin)),
@@ -70,7 +71,7 @@ def draw_result(image, boxes):
                           colors[k_idx % len(colors)],
                           -1)
             cv2.putText(image_result,
-                        klass,
+                        label,
                         (int(xmin), int(ymin) - 3),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         0.5,
@@ -79,11 +80,11 @@ def draw_result(image, boxes):
 
     return image_result
 
-def predict_image(predict_func, det_th):
+def predict_image(predict_func, image_idx, det_th):
 
-    file_name = 'voc_2007_train.txt'
+    file_name = 'voc_2007_test.txt'
     f = open(file_name, 'r')
-    line = f.readlines()[0].strip()
+    line = f.readlines()[image_idx].strip()
     record = line.split(' ')
     input_path = record[0]
 
@@ -139,10 +140,7 @@ def predict_image(predict_func, det_th):
 
     loc_pred, cls_pred, loc_mask_label, loc_mask_pred, tot_loc_loss, nr_pos, pos_conf_loss, neg_conf_loss = predictions
 
-    import pdb
-    pdb.set_trace()
-
-    boxes = postprocess(predictions, image_path=input_path, det_th=det_th)
+    boxes = postprocess([loc_pred, cls_pred], image_path=input_path, det_th=det_th)
 
     image_result = draw_result(ori_image, boxes)
     cv2.imwrite("debug_output.png", image_result)
@@ -152,6 +150,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_path', help='path of the model waiting for validation.')
     parser.add_argument('--data_format', choices=['NCHW', 'NHWC'], default='NHWC')
+    parser.add_argument('--image_idx', help='index of image in test set to be predicted', type=int, default=0)
     parser.add_argument('--det_th', help='detection threshold', type=float, default=0.25)
     args = parser.parse_args()
 
@@ -159,4 +158,4 @@ if __name__ == '__main__':
 
     predict_func = get_pred_func(args)
 
-    predict_image(predict_func, float(args.det_th))
+    predict_image(predict_func, args.image_idx, args.det_th)

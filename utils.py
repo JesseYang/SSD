@@ -44,18 +44,18 @@ class Box():
             self.h = p4 - p2
 
 def encode_box(gt_box, anchor_box):
-    cx = (gt_box.x - anchor_box.x) / anchor_box.w
-    cy = (gt_box.y - anchor_box.y) / anchor_box.h
-    w = np.log(gt_box.w / anchor_box.w)
-    h = np.log(gt_box.h / anchor_box.h)
+    cx = (gt_box.x - anchor_box.x) / anchor_box.w / cfg.prior_scaling[0]
+    cy = (gt_box.y - anchor_box.y) / anchor_box.h / cfg.prior_scaling[1]
+    w = np.log(gt_box.w / anchor_box.w) / cfg.prior_scaling[2]
+    h = np.log(gt_box.h / anchor_box.h) / cfg.prior_scaling[3]
     return np.asarray([cx, cy, w, h])
 
 def decode_box(loc_pred, anchor_box):
     cx, cy, w, h = loc_pred
-    box_cx = cx * anchor_box.w + anchor_box.x
-    box_cy = cy * anchor_box.h + anchor_box.y
-    box_w = np.exp(w) * anchor_box.w
-    box_h = np.exp(h) * anchor_box.h
+    box_cx = cx * anchor_box.w * cfg.prior_scaling[0] + anchor_box.x
+    box_cy = cy * anchor_box.h * cfg.prior_scaling[1] + anchor_box.y
+    box_w = np.exp(w * cfg.prior_scaling[2]) * anchor_box.w
+    box_h = np.exp(h * cfg.prior_scaling[3]) * anchor_box.h
     return Box(box_cx, box_cy, box_w, box_h)
 
 def overlap(x1, len1, x2, len2):
@@ -158,12 +158,11 @@ def postprocess(predictions, image_path=None, image_shape=None, det_th=None):
 
     boxes = {}
     for n in range(box_n):
-        klass = np.argmax(cls_pred[0, n])
+        klass = np.argmax(cls_pred[0, n, 1:]) + 1
         # the 0th class in prediction is the background
-        if klass == 0:
+        if cls_pred[0, n, klass] < (det_th or cfg.det_th):
             continue
         # the class index in config file is 0-based
-        klass = klass - 1
         anchor_box = Box(*cfg.all_anchors[n][:4])
         pred_box = decode_box(loc_pred[0, n], anchor_box)
 
@@ -176,7 +175,7 @@ def postprocess(predictions, image_path=None, image_shape=None, det_th=None):
         xmax = np.min([xmax, ori_width])
         ymax = np.min([ymax, ori_height])
 
-        klass_name = cfg.classes_name[klass]
+        klass_name = cfg.classes_name[klass - 1]
         if klass_name not in boxes.keys():
             boxes[klass_name] = []
 

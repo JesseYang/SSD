@@ -32,7 +32,7 @@ class VGGSSD(SSDModel):
 
     def get_logits(self, image):
 
-        with argscope(Conv2D, kernel_shape=3, nl=tf.nn.relu):
+        with argscope(Conv2D, kernel_shape=3, nl=tf.nn.relu, kernel_initializer=tf.contrib.layers.xavier_initializer()):
             conv4_3 = (LinearWrap(image)
                       .Conv2D('conv1_1', 64)
                       .Conv2D('conv1_2', 64)
@@ -59,11 +59,15 @@ class VGGSSD(SSDModel):
                     .Conv2D('conv5_3', 512)
                     .MaxPooling('pool5', 3, 1, padding='SAME')())
 
+            if cfg.freeze_backbone == True:
+                conv4_3 = tf.stop_gradient(conv4_3)
+                conv5 = tf.stop_gradient(conv5)
+
             if get_tf_version_number() >= 1.5:
                 conv6 = Conv2D('conv6', conv5, 1024, 3, dilation_rate=6)
             else:
                 filter_shape = [3, 3, 512, 1024]
-                W_init = tf.variance_scaling_initializer(scale=2.0)
+                W_init = tf.contrib.layers.xavier_initializer()
                 b_init = tf.constant_initializer()
                 W = tf.get_variable('W', filter_shape, initializer=W_init)
                 b = tf.get_variable('b', [1024], initializer=b_init)

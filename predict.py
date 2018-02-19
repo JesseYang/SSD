@@ -54,8 +54,9 @@ def draw_result(image, boxes):
 
             [conf, xmin, ymin, xmax, ymax] = k_box
 
-            label_height = 14
-            label_width = len(klass) * 10
+            label = "%s %.3f" % (klass, conf)
+            label_height = 16
+            label_width = len(label) * 10
  
             cv2.rectangle(image_result,
                           (int(xmin), int(ymin)),
@@ -68,7 +69,7 @@ def draw_result(image, boxes):
                           colors[k_idx % len(colors)],
                           -1)
             cv2.putText(image_result,
-                        klass,
+                        label,
                         (int(xmin), int(ymin) - 3),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         0.5,

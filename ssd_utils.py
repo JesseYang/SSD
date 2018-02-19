@@ -52,9 +52,10 @@ class SSDModel(ModelDesc):
             h = int(feature.get_shape()[1])
             w = int(feature.get_shape()[2])
 
+        W_init = tf.contrib.layers.xavier_initializer()
         # location
         loc_pred_num = anchor_num * 4
-        loc_pred = Conv2D('conv_loc', feature, loc_pred_num, 3)
+        loc_pred = Conv2D('conv_loc', feature, loc_pred_num, 3, kernel_initializer=W_init)
         if self.data_format == 'NCHW':
             loc_pred = tf.transpose(loc_pred, [0, 2, 3, 1])
         # loc_pred = tf.reshape(loc_pred, [-1, h, w, anchor_num, 4])
@@ -62,7 +63,7 @@ class SSDModel(ModelDesc):
 
         # class prediction
         cls_pred_num = anchor_num * (cfg.class_num + 1)
-        cls_pred = Conv2D('conv_cls', feature, cls_pred_num, 3)
+        cls_pred = Conv2D('conv_cls', feature, cls_pred_num, 3, kernel_initializer=W_init)
         if self.data_format == 'NCHW':
             loc_pred = tf.transpose(cls_pred, [0, 2, 3, 1])
         # cls_pred = tf.reshape(cls_pred, [-1, h, w, anchor_num, (cfg.class_num + 1)])
@@ -159,7 +160,7 @@ class SSDModel(ModelDesc):
             neg_conf_loss = tf.reduce_sum(neg_conf_loss * fnmask, name='neg_conf_loss')
 
             conf_loss = pos_conf_loss + neg_conf_loss
-            add_moving_summary(pos_conf_loss, neg_conf_loss)
+            # add_moving_summary(pos_conf_loss, neg_conf_loss)
         else:
             conf_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_pred, labels=conf_label))
         # cost with weight decay
@@ -167,10 +168,13 @@ class SSDModel(ModelDesc):
             wd_cost = regularize_cost('.*/W', l2_regularizer(cfg.weight_decay), name='l2_regularize_loss')
         else:
             wd_cost = tf.constant(0.0)
-        loc_loss_per_pos = tf.truediv(loc_loss, tf.to_float(nr_pos), name='loc_loss')
-        conf_loss_per_pos = tf.truediv(conf_loss, tf.to_float(nr_pos), name='conf_loss')
-        loss = tf.add_n([loc_loss_per_pos, conf_loss_per_pos], name='loss')
-        add_moving_summary(loc_loss_per_pos, conf_loss_per_pos, loss, wd_cost)
+        loc_loss_per_box = tf.truediv(loc_loss, tf.to_float(nr_pos), name='loc_loss')
+        if cfg.hard_sample_mining:
+            conf_loss_per_box = tf.truediv(conf_loss, tf.to_float(nr_pos + nr_neg), name='conf_loss')
+        else:
+            conf_loss_per_box = tf.truediv(conf_loss, tf.to_float(cfg.tot_anchor_num), name='conf_loss')
+        loss = tf.add_n([loc_loss_per_box * cfg.alpha, conf_loss_per_box], name='loss')
+        add_moving_summary(loc_loss_per_box, conf_loss_per_box, loss, wd_cost)
         self.cost = tf.add_n([loss, wd_cost], name='cost')
 
     def _get_optimizer(self):
@@ -241,7 +245,7 @@ class CalMAP(Inferencer):
                     f.write(record + '\n')
         # calculate the mAP based on the predicted result and the ground truth
         mAP = do_python_eval(self.pred_dir)
-        return { "mAP": mAP, "test_loss": np.mean(self.loss) }
+        return { "mAP": mAP }
 
 
 def get_data(train_or_test, batch_size):
@@ -273,8 +277,7 @@ def get_data(train_or_test, batch_size):
         ]
     ds = AugmentImageComponent(ds, augmentors)
     ds = BatchData(ds, batch_size, remainder=not isTrain)
-    if isTrain:
-        ds = PrefetchDataZMQ(ds, min(6, multiprocessing.cpu_count()))
+    ds = PrefetchDataZMQ(ds, min(6, multiprocessing.cpu_count()))
     return ds
 
 
@@ -290,15 +293,16 @@ def get_config(args, model):
 
     callbacks = [
       ModelSaver(),
-
-
+      PeriodicTrigger(InferenceRunner(ds_test,
+                                      ScalarStats(['conf_loss', 'loc_loss', 'loss'])),
+                      every_k_epochs=3),
       ScheduledHyperParamSetter('learning_rate',
                                 cfg.lr_schedule,
                                 step_based=True),
       HumanHyperParamSetter('learning_rate'),
     ]
     if cfg.mAP == True:
-        callbacks.append(PeriodicTrigger(InferenceRunner(ds_test, [CalMAP(cfg.test_list)]), every_k_epochs=10))
+        callbacks.append(PeriodicTrigger(InferenceRunner(ds_test, [CalMAP(cfg.test_list)]), every_k_epochs=1))
 
     if args.debug:
       callbacks.append(HookToCallback(tf_debug.LocalCLIDebugHook()))
