@@ -7,3 +7,4 @@ voc
 train_log
 *.png
 annotations_cache
+input_images

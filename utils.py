@@ -158,10 +158,15 @@ def postprocess(predictions, image_path=None, image_shape=None, det_th=None):
 
     boxes = {}
     for n in range(box_n):
-        klass = np.argmax(cls_pred[0, n, 1:]) + 1
+        selected_klass = np.where(cls_pred[0, n] > (det_th or cfg.det_th))[0].tolist()
         # the 0th class in prediction is the background
-        if cls_pred[0, n, klass] < (det_th or cfg.det_th):
+        selected_klass.remove(0) if 0 in selected_klass else None
+        if len(selected_klass) == 0:
             continue
+        # klass = np.argmax(cls_pred[0, n, 1:]) + 1
+        # if cls_pred[0, n, klass] < (det_th or cfg.det_th):
+        #     continue
+
         # the class index in config file is 0-based
         anchor_box = Box(*cfg.all_anchors[n][:4])
         pred_box = decode_box(loc_pred[0, n], anchor_box)
@@ -175,13 +180,14 @@ def postprocess(predictions, image_path=None, image_shape=None, det_th=None):
         xmax = np.min([xmax, ori_width])
         ymax = np.min([ymax, ori_height])
 
-        klass_name = cfg.classes_name[klass - 1]
-        if klass_name not in boxes.keys():
-            boxes[klass_name] = []
+        for klass in selected_klass:
+            klass_name = cfg.classes_name[klass - 1]
+            if klass_name not in boxes.keys():
+                boxes[klass_name] = []
 
-        box = [cls_pred[0, n, klass], xmin, ymin, xmax, ymax]
+            box = [cls_pred[0, n, klass], xmin, ymin, xmax, ymax]
 
-        boxes[klass_name].append(box)
+            boxes[klass_name].append(box)
 
     # do non-maximum-suppresion
     nms_boxes = {}

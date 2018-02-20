@@ -260,17 +260,10 @@ def get_data(train_or_test, batch_size):
     if isTrain:
         augmentors = [
             imgaug.RandomOrderAug(
-                [imgaug.Brightness(30, clip=False),
-                 imgaug.Contrast((0.8, 1.2), clip=False),
-                 imgaug.Saturation(0.4),
-                 imgaug.Lighting(0.1,
-                                 eigval=[0.2175, 0.0188, 0.0045][::-1],
-                                 eigvec=np.array(
-                                     [[-0.5675, 0.7192, 0.4009],
-                                      [-0.5808, -0.0045, -0.8140],
-                                      [-0.5836, -0.6948, 0.4203]],
-                                     dtype='float32')[::-1, ::-1]
-                                 )]),
+                [imgaug.Brightness(32, clip=False),
+                 imgaug.Contrast((0.5, 1.5), clip=False),
+                 imgaug.Saturation(0.5),
+                 imgaug.Hue((0, 0.2*180), rgb=True)]),
             imgaug.Clip(),
             imgaug.ToUint8()
         ]

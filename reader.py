@@ -20,10 +20,21 @@ except Exception:
 
 from tensorpack import *
 
+SAVE_DIR = 'input_images'
 
 class Data(RNGDataFlow):
-    def __init__(self, filename_list, shuffle, flip, affine_trans):
+    def __init__(self, filename_list, shuffle, flip, affine_trans, save_img=False):
         self.filename_list = filename_list
+        self.save_img = save_img
+
+        if save_img == True:
+            if os.path.isdir(SAVE_DIR):
+                shutil.rmtree(SAVE_DIR)
+            os.mkdir(SAVE_DIR)
+            self.colors = [(255,0,0), (0,255,0), (0,0,255),
+                           (255,255,0), (255,0,255), (0,255,255),
+                           (122,0,0), (0,122,0), (0,0,122),
+                           (122,122,0), (122,0,122), (0,122,122)]
 
         if isinstance(filename_list, list) == False:
             filename_list = [filename_list]
@@ -68,6 +79,9 @@ class Data(RNGDataFlow):
         if hflip:
             image = cv2.flip(image, flipCode=1)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        if self.save_img:
+            misc.imsave(os.path.join(SAVE_DIR, "%d.jpg" % idx), image)
+        img_with_box = np.copy(image) if self.save_img else None
         image = cv2.resize(image, (image_width, image_height))
 
         anchor_iou = np.zeros((cfg.tot_anchor_num, ))
@@ -103,6 +117,13 @@ class Data(RNGDataFlow):
             class_num = int(record[i + 4])
             i += 5
 
+            if self.save_img:
+                cv2.rectangle(img_with_box,
+                              (int(xmin), int(ymin)),
+                              (int(xmax), int(ymax)),
+                              self.colors[class_num % len(self.colors)],
+                              3)
+
             xmin = xmin / w
             xmax = xmax / w
             ymin = ymin / h
@@ -133,6 +154,9 @@ class Data(RNGDataFlow):
                     anchor_iou[anchor_idx] = iou
 
         anchor_neg_mask = anchor_iou < cfg.neg_iou_th
+
+        if self.save_img:
+            misc.imsave(os.path.join(SAVE_DIR, "%d_with_box.jpg" % idx), img_with_box)
 
         return [image, gt_box_coord, anchor_cls, anchor_neg_mask, anchor_loc, np.asarray(s)]
 
@@ -201,14 +225,13 @@ def generate_gt_result(test_path, gt_dir="result_gt", overwrite=True):
                     f.write(' '.join(line) + '\n')
 
 if __name__ == '__main__':
-    df = Data('voc_2007_train.txt', shuffle=False, flip=False, affine_trans=False)
+    # df = Data('voc_2007_train.txt', shuffle=False, flip=False, affine_trans=False)
+    df = Data('temp.txt', shuffle=False, flip=True, affine_trans=True, save_img=True)
     df.reset_state()
 
     g = df.get_data()
-    pb = next(g)
-
-    import pdb
-    pdb.set_trace()
+    for i in range(32):
+        next(g)
 
     # for idx in range(100):
     #     if idx % 10 == 0:
