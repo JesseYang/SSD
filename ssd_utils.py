@@ -171,13 +171,13 @@ class SSDModel(ModelDesc):
             wd_cost = regularize_cost('.*/W', l2_regularizer(cfg.weight_decay), name='l2_regularize_loss')
         else:
             wd_cost = tf.constant(0.0)
-        loc_loss_per_box = tf.truediv(loc_loss, tf.to_float(nr_pos), name='loc_loss')
-        if cfg.hard_sample_mining:
-            conf_loss_per_box = tf.truediv(conf_loss, tf.to_float(nr_pos + nr_neg), name='conf_loss')
-        else:
-            conf_loss_per_box = tf.truediv(conf_loss, tf.to_float(cfg.tot_anchor_num), name='conf_loss')
-        loss = tf.add_n([loc_loss_per_box * cfg.alpha, conf_loss_per_box], name='loss')
-        add_moving_summary(loc_loss_per_box, conf_loss_per_box, loss, wd_cost)
+        loc_loss = tf.truediv(loc_loss, tf.to_float(nr_pos), name='loc_loss')
+        conf_loss = tf.truediv(conf_loss, tf.to_float(nr_pos), name='conf_loss')
+        # loc_loss = tf.truediv(loc_loss, tf.to_float(self.batch_size), name='loc_loss')
+        # conf_loss = tf.truediv(conf_loss, tf.to_float(self.batch_size), name='conf_loss')
+
+        loss = tf.add_n([loc_loss * cfg.alpha, conf_loss], name='loss')
+        add_moving_summary(loc_loss, conf_loss, loss, wd_cost)
         self.cost = tf.add_n([loss, wd_cost], name='cost')
 
     def _get_optimizer(self):

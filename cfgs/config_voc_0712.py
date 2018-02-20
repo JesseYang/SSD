@@ -53,7 +53,6 @@ cfg.all_anchors = ssd_anchor_all_layers([cfg.img_size, cfg.img_size],
 cfg.tot_anchor_num = cfg.all_anchors.shape[0]
 
 cfg.prior_scaling = [0.1, 0.1, 0.2, 0.2]
-# cfg.prior_scaling = [1.0, 1.0, 1.0, 1.0]
 
 cfg.classes_num = { }
 for idx, name in enumerate(cfg.classes_name):

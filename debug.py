@@ -110,7 +110,7 @@ def predict_image(predict_func, image_idx, det_th, output):
         ymin = record[i + 1]
         xmax = record[i + 2]
         ymax = record[i + 3]
-        class_num = int(record[4])
+        class_num = int(record[i + 4])
         i += 5
 
         xmin = xmin / w

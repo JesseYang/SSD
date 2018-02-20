@@ -8,4 +8,4 @@ train_log
 *.png
 annotations_cache
 input_images
-debug_*.jpg
+*.jpg
