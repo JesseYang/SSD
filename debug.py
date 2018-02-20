@@ -80,7 +80,7 @@ def draw_result(image, boxes):
 
     return image_result
 
-def predict_image(predict_func, image_idx, det_th):
+def predict_image(predict_func, image_idx, det_th, output):
 
     # file_name = 'voc_2007_test.txt'
     file_name = 'voc_2007_train.txt'
@@ -153,7 +153,8 @@ def predict_image(predict_func, image_idx, det_th):
     boxes = postprocess([loc_pred, cls_pred], image_path=input_path, det_th=det_th)
 
     image_result = draw_result(ori_image, boxes)
-    cv2.imwrite("debug_output.png", image_result)
+    save_path = "debug_%d.jpg" % image_idx if output == None else output
+    cv2.imwrite(save_path, image_result)
 
 
 if __name__ == '__main__':
@@ -162,10 +163,11 @@ if __name__ == '__main__':
     parser.add_argument('--data_format', choices=['NCHW', 'NHWC'], default='NHWC')
     parser.add_argument('--image_idx', help='index of image in test set to be predicted', type=int, default=0)
     parser.add_argument('--det_th', help='detection threshold', type=float, default=0.25)
+    parser.add_argument('--output', help='output image name')
     args = parser.parse_args()
 
     os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
     predict_func = get_pred_func(args)
 
-    predict_image(predict_func, args.image_idx, args.det_th)
+    predict_image(predict_func, args.image_idx, args.det_th, args.output)
