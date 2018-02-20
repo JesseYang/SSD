@@ -73,7 +73,9 @@ class SSDModel(ModelDesc):
 
     def _get_inputs(self):
         return [InputDesc(tf.uint8, [None, cfg.img_h, cfg.img_w, 3], 'input'),
+                InputDesc(tf.float32, [None, cfg.max_gt_box_shown, 4], 'gt_bboxes'),
                 InputDesc(tf.int32, [None, cfg.tot_anchor_num], 'conf_label'),
+                InputDesc(tf.bool, [None, cfg.tot_anchor_num], 'neg_mask'),
                 InputDesc(tf.float32, [None, cfg.tot_anchor_num, 4], 'loc_label'),
                 InputDesc(tf.float32, [None, 3], 'ori_shape'),
                 ]
@@ -89,12 +91,13 @@ class SSDModel(ModelDesc):
 
     def _build_graph(self, inputs):
         # image, gt_boxes_loc, gt_boxes_label = inputs
-        image, conf_label, loc_label, ori_shape = inputs
+        image, gt_bbox, conf_label, neg_mask, loc_label, ori_shape = inputs
         self.batch_size = tf.shape(image)[0]
 
-        tf.summary.image('input-image', image, max_outputs=3)
-
         image = tf.cast(image, tf.float32) * (1.0 / 255)
+
+        image_with_bbox = tf.image.draw_bounding_boxes(image, gt_bbox)
+        tf.summary.image('input-image', image_with_bbox, max_outputs=3)
 
         image_mean = tf.constant([0.485, 0.456, 0.406], dtype=tf.float32)
         image_std = tf.constant([0.229, 0.224, 0.225], dtype=tf.float32)
@@ -123,7 +126,7 @@ class SSDModel(ModelDesc):
         nr_pos = tf.identity(nr_pos, name='nr_pos')
         # location loss, the last class is the background class
         pos_mask = tf.stop_gradient(tf.not_equal(conf_label, 0))
-        neg_mask = tf.stop_gradient(tf.equal(conf_label, 0))
+        # neg_mask = tf.stop_gradient(tf.equal(conf_label, 0))
         loc_mask_label = tf.boolean_mask(loc_label, pos_mask)
         loc_mask_label = tf.identity(loc_mask_label, name='loc_mask_label')
         loc_mask_pred = tf.boolean_mask(loc_pred, pos_mask)
@@ -277,7 +280,8 @@ def get_data(train_or_test, batch_size):
         ]
     ds = AugmentImageComponent(ds, augmentors)
     ds = BatchData(ds, batch_size, remainder=not isTrain)
-    ds = PrefetchDataZMQ(ds, min(6, multiprocessing.cpu_count()))
+    if isTrain:
+        ds = PrefetchDataZMQ(ds, min(6, multiprocessing.cpu_count()))
     return ds
 
 
@@ -302,7 +306,10 @@ def get_config(args, model):
       HumanHyperParamSetter('learning_rate'),
     ]
     if cfg.mAP == True:
-        callbacks.append(PeriodicTrigger(InferenceRunner(ds_test, [CalMAP(cfg.test_list)]), every_k_epochs=1))
+        callbacks.append(EnableCallbackIf(PeriodicTrigger(InferenceRunner(ds_test,
+                                                                         [CalMAP(cfg.test_list)]),
+                                          every_k_epochs=3),
+                         lambda x : x.epoch_num >= 10)),
 
     if args.debug:
       callbacks.append(HookToCallback(tf_debug.LocalCLIDebugHook()))

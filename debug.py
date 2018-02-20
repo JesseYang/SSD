@@ -32,7 +32,7 @@ def get_pred_func(args):
     model = VGGSSD()
     predict_config = PredictConfig(session_init=sess_init,
                                    model=model,
-                                   input_names=["input", "conf_label", "loc_label", "ori_shape"],
+                                   input_names=["input", "conf_label", "neg_mask", "loc_label", "ori_shape"],
                                    output_names=["loc_pred", "cls_pred", "loc_mask_label", "loc_mask_pred", "tot_loc_loss", "nr_pos", "pos_conf_loss", "neg_conf_loss"])
 
     predict_func = OfflinePredictor(predict_config) 
@@ -82,7 +82,8 @@ def draw_result(image, boxes):
 
 def predict_image(predict_func, image_idx, det_th):
 
-    file_name = 'voc_2007_test.txt'
+    # file_name = 'voc_2007_test.txt'
+    file_name = 'voc_2007_train.txt'
     f = open(file_name, 'r')
     line = f.readlines()[image_idx].strip()
     record = line.split(' ')
@@ -96,47 +97,56 @@ def predict_image(predict_func, image_idx, det_th):
 
     record[1:] = [float(num) for num in record[1:]]
 
-    xmin = record[1]
-    ymin = record[2]
-    xmax = record[3]
-    ymax = record[4]
-
-    class_num = int(record[5])
 
     anchor_iou = np.zeros((cfg.tot_anchor_num, ))
     anchor_cls = np.zeros((cfg.tot_anchor_num, )).astype(int)
     anchor_loc = np.zeros((cfg.tot_anchor_num, 4))
 
-    xmin = xmin / w
-    xmax = xmax / w
-    ymin = ymin / h
-    ymax = ymax / h
 
-    gt_box = Box(xmin, ymin, xmax, ymax, mode='XYXY')
+    i = 1
+    while i < len(record):
 
-    gt_box_a = gt_box.w * gt_box.h
+        xmin = record[i]
+        ymin = record[i + 1]
+        xmax = record[i + 2]
+        ymax = record[i + 3]
+        class_num = int(record[4])
+        i += 5
 
-    for anchor_idx, anchor in enumerate(cfg.all_anchors):
-        if gt_box_a > anchor[4] or gt_box_a < anchor[5]:
-            continue
-        if np.abs(gt_box.x - anchor[0]) > min(gt_box.w, anchor[2]) / 2:
-            continue
-        if np.abs(gt_box.y - anchor[1]) > min(gt_box.h, anchor[3]) / 2:
-            continue
-        anchor_box = Box(*anchor[:4])
-        iou = box_iou(gt_box, anchor_box)
-        if iou >= cfg.iou_th and iou > anchor_iou[anchor_idx]:
-            anchor_iou[anchor_idx] = iou
-            anchor_cls[anchor_idx] = class_num + 1
-            anchor_loc[anchor_idx] = encode_box(gt_box, anchor_box)
+        xmin = xmin / w
+        xmax = xmax / w
+        ymin = ymin / h
+        ymax = ymax / h
+
+        gt_box = Box(xmin, ymin, xmax, ymax, mode='XYXY')
+
+        gt_box_a = gt_box.w * gt_box.h
+
+        for anchor_idx, anchor in enumerate(cfg.all_anchors):
+            if gt_box_a > anchor[4] or gt_box_a < anchor[5]:
+                continue
+            if np.abs(gt_box.x - anchor[0]) > min(gt_box.w, anchor[2]) / 2:
+                continue
+            if np.abs(gt_box.y - anchor[1]) > min(gt_box.h, anchor[3]) / 2:
+                continue
+            anchor_box = Box(*anchor[:4])
+            iou = box_iou(gt_box, anchor_box)
+            if iou >= cfg.iou_th and iou > anchor_iou[anchor_idx]:
+                anchor_cls[anchor_idx] = class_num + 1
+                anchor_loc[anchor_idx] = encode_box(gt_box, anchor_box)
+            if iou > anchor_iou[anchor_idx]:
+                anchor_iou[anchor_idx] = iou
+
+    anchor_neg_mask = anchor_iou < cfg.neg_iou_th
 
 
     image = np.expand_dims(image, axis=0)
     anchor_cls = np.expand_dims(anchor_cls, axis=0)
+    anchor_neg_mask = np.expand_dims(anchor_neg_mask, axis=0)
     anchor_loc = np.expand_dims(anchor_loc, axis=0)
     ori_shape = np.expand_dims(np.asarray(s), axis=0)
 
-    predictions = predict_func(image, anchor_cls, anchor_loc, ori_shape)
+    predictions = predict_func(image, anchor_cls, anchor_neg_mask, anchor_loc, ori_shape)
 
     loc_pred, cls_pred, loc_mask_label, loc_mask_pred, tot_loc_loss, nr_pos, pos_conf_loss, neg_conf_loss = predictions
 

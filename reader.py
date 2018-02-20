@@ -75,8 +75,10 @@ class Data(RNGDataFlow):
         anchor_cls = np.zeros((cfg.tot_anchor_num, )).astype(int)
         anchor_loc = np.zeros((cfg.tot_anchor_num, 4))
 
+        gt_box_num = 0
+        gt_box_coord = np.zeros((cfg.max_gt_box_shown, 4))
+
         i = 1
-        box_idx = 0
         while i < len(record):
             # for each ground truth box
             xmin = record[i]
@@ -106,6 +108,10 @@ class Data(RNGDataFlow):
             ymin = ymin / h
             ymax = ymax / h
 
+            if gt_box_num < cfg.max_gt_box_shown:
+                gt_box_coord[gt_box_num] = np.asarray([ymin, xmin, ymax, xmax])
+                gt_box_num += 1
+
             gt_box = Box(xmin, ymin, xmax, ymax, mode='XYXY')
 
             gt_box_a = gt_box.w * gt_box.h
@@ -126,10 +132,9 @@ class Data(RNGDataFlow):
                 if iou > anchor_iou[anchor_idx]:
                     anchor_iou[anchor_idx] = iou
 
-        anchor_neg_mask = (anchor_iou < cfg.neg_iou_th).astype(int)
+        anchor_neg_mask = anchor_iou < cfg.neg_iou_th
 
-        # return [image, anchor_cls, anchor_loc, np.asarray(s)]
-        return [image, anchor_cls, anchor_neg_mask, anchor_loc, np.asarray(s)]
+        return [image, gt_box_coord, anchor_cls, anchor_neg_mask, anchor_loc, np.asarray(s)]
 
     def get_data(self):
         idxs = np.arange(len(self.imglist))

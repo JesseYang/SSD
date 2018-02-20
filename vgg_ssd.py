@@ -13,11 +13,14 @@ import json
 
 import tensorflow as tf
 from tensorflow.contrib.layers import variance_scaling_initializer
+from tensorflow.contrib.framework.python.ops import variables
+from tensorflow.python.ops import init_ops
 from tensorpack import *
 from tensorpack.tfutils.symbolic_functions import *
 from tensorpack.tfutils.common import get_tf_version_number
 from tensorpack.tfutils.summary import *
 from tensorpack.utils.gpu import get_nr_gpu
+
 
 try:
     from .cfgs.config import cfg
@@ -96,12 +99,27 @@ class VGGSSD(SSDModel):
                      .Conv2D('conv11_1', 128, 1)
                      .Conv2D('conv11_2', 256, 3, padding="VALID")())
 
+        conv4_3_shape = conv4_3.get_shape()
         if self.data_format == 'NHWC':
-            conv4_3 = 20 * tf.nn.l2_normalize(conv4_3, 3)
+            norm_dim = 3
+            scale_shape = conv4_3_shape[-1:]
         else:
-            conv4_3 = 20 * tf.nn.l2_normalize(conv4_3, 1)
+            norm_dim = 1
+            scale_shape = (conv4_3_shape[1])
+        scale = variables.model_variable('conv4_3_scale',
+                                         shape=scale_shape,
+                                         dtype=conv4_3.dtype.base_dtype,
+                                         initializer=init_ops.ones_initializer(),
+                                         trainable=True)
+        if self.data_format == 'NCHW':
+            scale = tf.expand_dims(scale, axis=-1)
+            scale = tf.expand_dims(scale, axis=-1)
 
-        features = [conv4_3, conv7, conv8, conv9, conv10, conv11]
+
+        conv4_3_norm = 20 * tf.nn.l2_normalize(conv4_3, norm_dim)
+        conv4_3_scale = tf.multiply(conv4_3_norm, scale)
+
+        features = [conv4_3_scale, conv7, conv8, conv9, conv10, conv11]
         return features
 
 if __name__ == '__main__':

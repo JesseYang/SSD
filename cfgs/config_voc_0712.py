@@ -7,11 +7,8 @@ cfg = edict()
 cfg.img_size = 300
 cfg.img_w = cfg.img_size
 cfg.img_h = cfg.img_size
-cfg.grid_w = 32
-cfg.grid_h = 32
 
 cfg.n_boxes = 5
-cfg.n_classes = 20
 
 cfg.threshold = 0.6
 
@@ -55,6 +52,9 @@ cfg.all_anchors = ssd_anchor_all_layers([cfg.img_size, cfg.img_size],
 
 cfg.tot_anchor_num = cfg.all_anchors.shape[0]
 
+cfg.prior_scaling = [0.1, 0.1, 0.2, 0.2]
+# cfg.prior_scaling = [1.0, 1.0, 1.0, 1.0]
+
 cfg.classes_num = { }
 for idx, name in enumerate(cfg.classes_name):
     cfg.classes_num[name] = idx
@@ -67,19 +67,19 @@ for train_file in cfg.train_list:
     f = open(train_file, 'r')
     cfg.train_sample_num += len(f.readlines())
 
-cfg.det_th = 0.001
+cfg.max_gt_box_shown = 30
+cfg.det_th = 0.01
 cfg.iou_th = 0.5
+cfg.neg_iou_th = 0.5
 cfg.nms = True
 cfg.nms_th = 0.45
 
 cfg.hard_sample_mining = True
 
 cfg.alpha = 1.0
+cfg.freeze_backbone = False
 
 cfg.mAP = True
-
-cfg.max_epoch = 300
-cfg.size_th = 0.1
 
 cfg.neg_ratio = 3
 
