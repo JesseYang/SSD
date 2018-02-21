@@ -9,3 +9,4 @@ train_log
 annotations_cache
 input_images
 *.jpg
+*.tar.gz

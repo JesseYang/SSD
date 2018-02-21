@@ -259,7 +259,7 @@ def get_data(train_or_test, batch_size):
     isTrain = train_or_test == 'train'
 
     filename_list = cfg.train_list if isTrain else cfg.test_list
-    ds = Data(filename_list, shuffle=isTrain, flip=isTrain, affine_trans=isTrain)
+    ds = Data(filename_list, shuffle=isTrain, flip=isTrain, random_crop=isTrain)
 
     if isTrain:
         augmentors = [
@@ -298,7 +298,7 @@ def get_config(args, model):
                                       ScalarStats(['conf_loss', 'loc_loss', 'loss'])),
                       every_k_epochs=3),
       HyperParamSetterWithFunc('learning_rate',
-                               lambda e, x: 1e-3 * 0.97 ** e),
+                               lambda e, x: 1e-3 * 0.98 ** e),
       HumanHyperParamSetter('learning_rate'),
     ]
     if cfg.mAP == True:
