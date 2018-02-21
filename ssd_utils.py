@@ -171,10 +171,10 @@ class SSDModel(ModelDesc):
             wd_cost = regularize_cost('.*/W', l2_regularizer(cfg.weight_decay), name='l2_regularize_loss')
         else:
             wd_cost = tf.constant(0.0)
-        loc_loss = tf.truediv(loc_loss, tf.to_float(nr_pos), name='loc_loss')
-        conf_loss = tf.truediv(conf_loss, tf.to_float(nr_pos), name='conf_loss')
-        # loc_loss = tf.truediv(loc_loss, tf.to_float(self.batch_size), name='loc_loss')
-        # conf_loss = tf.truediv(conf_loss, tf.to_float(self.batch_size), name='conf_loss')
+        # loc_loss = tf.truediv(loc_loss, tf.to_float(nr_pos), name='loc_loss')
+        # conf_loss = tf.truediv(conf_loss, tf.to_float(nr_pos), name='conf_loss')
+        loc_loss = tf.truediv(loc_loss, tf.to_float(self.batch_size), name='loc_loss')
+        conf_loss = tf.truediv(conf_loss, tf.to_float(self.batch_size), name='conf_loss')
 
         loss = tf.add_n([loc_loss * cfg.alpha, conf_loss], name='loss')
         add_moving_summary(loc_loss, conf_loss, loss, wd_cost)
@@ -182,7 +182,11 @@ class SSDModel(ModelDesc):
 
     def _get_optimizer(self):
         lr = get_scalar_var('learning_rate', 1e-3, summary=True)
-        return tf.train.MomentumOptimizer(lr, 0.9, use_nesterov=True)
+        return tf.train.AdamOptimizer(lr,
+                                      beta1=0.9,
+                                      beta2=0.999,
+                                      epsilon=1.0)
+        # return tf.train.MomentumOptimizer(lr, 0.9, use_nesterov=True)
 
 class CalMAP(Inferencer):
     def __init__(self, test_path):
@@ -293,9 +297,8 @@ def get_config(args, model):
       PeriodicTrigger(InferenceRunner(ds_test,
                                       ScalarStats(['conf_loss', 'loc_loss', 'loss'])),
                       every_k_epochs=3),
-      ScheduledHyperParamSetter('learning_rate',
-                                cfg.lr_schedule,
-                                step_based=True),
+      HyperParamSetterWithFunc('learning_rate',
+                               lambda e, x: 1e-3 * 0.97 ** e),
       HumanHyperParamSetter('learning_rate'),
     ]
     if cfg.mAP == True:
