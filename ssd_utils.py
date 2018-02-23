@@ -251,8 +251,12 @@ class CalMAP(Inferencer):
                 for record in self.results[class_name]:
                     f.write(record + '\n')
         # calculate the mAP based on the predicted result and the ground truth
-        mAP = do_python_eval(self.pred_dir)
-        return { "mAP": mAP }
+        aps = do_python_eval(self.pred_dir)
+        ap_result = { "mAP": np.mean(aps) }
+        for idx, cls in enumerate(cfg.classes_name):
+            ap_result["_" + cls] = aps[idx]
+        # return { "mAP": np.mean(aps) }
+        return ap_result
 
 
 def get_data(train_or_test, batch_size):

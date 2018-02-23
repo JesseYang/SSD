@@ -262,7 +262,8 @@ def do_python_eval(res_prefix, verbose=True):
     if verbose:
         print('Mean AP = {:.4f}'.format(np.mean(aps)))
 
-    return np.mean(aps)
+    # return np.mean(aps)
+    return aps
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
