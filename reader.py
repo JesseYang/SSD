@@ -30,6 +30,8 @@ def intersect(box_a, box_b):
 
 
 def jaccard_numpy(box_a, box_b):
+    # import pdb
+    # pdb.set_trace()
     """Compute the jaccard overlap of two sets of boxes.  The jaccard overlap
     is simply the intersection over union of two boxes.
     E.g.:
@@ -107,6 +109,16 @@ class Data(RNGDataFlow):
             box_idx += 1
             i += 5
 
+        ori_img_with_box = image.copy()
+        if self.save_img:
+            for box_idx in range(box_num):
+                cv2.rectangle(ori_img_with_box,
+                              (int(boxes[box_idx, 0]), int(boxes[box_idx, 1])),
+                              (int(boxes[box_idx, 2]), int(boxes[box_idx, 3])),
+                              self.colors[class_ary[box_idx] % len(self.colors)],
+                              3)
+            misc.imsave(os.path.join(SAVE_DIR, "%d_with_box.jpg" % idx), ori_img_with_box)
+
         if hflip:
             image = cv2.flip(image, flipCode=1)
             boxes = boxes.copy()
@@ -115,7 +127,7 @@ class Data(RNGDataFlow):
         if self.random_crop:
             # expand img
             if np.random.randint(2):
-                ratio = np.random.uniform(1, 4)
+                ratio = np.random.uniform(1, 2)
                 left = np.random.uniform(0, w * ratio - w)
                 top = np.random.uniform(0, h * ratio - h)
                 expand_image = np.zeros(
@@ -141,7 +153,8 @@ class Data(RNGDataFlow):
                 [0.7, np.inf],
                 [0.9, np.inf],
                 [-np.inf, np.inf]]
-            mode = np.random.choice(sample_options)
+            mode_idx = np.random.randint(len(sample_options))
+            mode = sample_options[mode_idx]
             if mode != None:
                 min_iou, max_iou = mode
                 crop = False
@@ -161,7 +174,7 @@ class Data(RNGDataFlow):
                     overlap = jaccard_numpy(boxes, rect)
 
                     # is min and max overlap constraint satisfied? if not try again
-                    if overlap.min() < min_iou and max_iou < overlap.max():
+                    if (overlap.min() < min_iou) or (overlap.max() > max_iou):
                         continue
 
                     current_image = current_image[rect[1]:rect[3], rect[0]:rect[2], :]
@@ -211,8 +224,6 @@ class Data(RNGDataFlow):
                     h, w, _ = image.shape
 
 
-        if self.save_img:
-            misc.imsave(os.path.join(SAVE_DIR, "%d.jpg" % idx), image)
 
         img_with_box = np.copy(image) if self.save_img else None
         image = cv2.resize(image, (image_width, image_height))
@@ -263,7 +274,7 @@ class Data(RNGDataFlow):
         anchor_neg_mask = anchor_iou < cfg.neg_iou_th
 
         if self.save_img:
-            misc.imsave(os.path.join(SAVE_DIR, "%d_with_box.jpg" % idx), img_with_box)
+            misc.imsave(os.path.join(SAVE_DIR, "%d_with_box_aug_%d.jpg" % (idx, mode_idx)), img_with_box)
 
         return [image, gt_box_coord, anchor_cls, anchor_neg_mask, anchor_loc, np.asarray(s)]
 
@@ -336,7 +347,7 @@ def generate_gt_result(test_path, gt_dir="result_gt", overwrite=True):
 
 if __name__ == '__main__':
     # df = Data('voc_2007_train.txt', shuffle=False, flip=False, affine_trans=False)
-    df = Data('temp_12.txt', shuffle=False, flip=True, random_crop=True, save_img=True)
+    df = Data('temp.txt', shuffle=False, flip=True, random_crop=True, save_img=True)
     df.reset_state()
 
     g = df.get_data()

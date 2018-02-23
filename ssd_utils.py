@@ -267,7 +267,7 @@ def get_data(train_or_test, batch_size):
                 [imgaug.Brightness(32, clip=False),
                  imgaug.Contrast((0.5, 1.5), clip=False),
                  imgaug.Saturation(0.5),
-                 imgaug.Hue((0, 0.2*180), rgb=True)]),
+                 imgaug.Hue((-0.1*180, 0.1*180), rgb=True)]),
             imgaug.Clip(),
             imgaug.ToUint8()
         ]
