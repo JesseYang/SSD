@@ -142,7 +142,7 @@ class Data(RNGDataFlow):
                     (int(h * ratio), int(w * ratio), c),
                     dtype=image.dtype)
 
-                img_mean = np.mean(image, axis=(0,1))
+                img_mean = np.mean(image, axis=(0, 1))
                 expand_image[:, :, :] = img_mean
                 expand_image[int(top):int(top + h),
                              int(left):int(left + w)] = image
