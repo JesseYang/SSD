@@ -29,14 +29,6 @@ def intersect(box_a, box_b):
     return inter[:, 0] * inter[:, 1]
 
 
-def cal_overlap(bboxes, crop_box):
-    # import pdb
-    # pdb.set_trace()
-    inter = intersect(bboxes, crop_box)
-    area_bboxes = ((bboxes[:, 2] - bboxes[:, 0]) *
-                   (bboxes[:, 3] - bboxes[:, 1]))
-    return inter / area_bboxes
-
 def jaccard_numpy(box_a, box_b):
     """Compute the jaccard overlap of two sets of boxes.  The jaccard overlap
     is simply the intersection over union of two boxes.
@@ -142,7 +134,7 @@ class Data(RNGDataFlow):
                     (int(h * ratio), int(w * ratio), c),
                     dtype=image.dtype)
 
-                img_mean = np.mean(image, axis=(0, 1))
+                img_mean = np.asarray([104, 117, 123])
                 expand_image[:, :, :] = img_mean
                 expand_image[int(top):int(top + h),
                              int(left):int(left + w)] = image
@@ -156,11 +148,11 @@ class Data(RNGDataFlow):
 
             sample_options = [
                 None,   # use entire original input image
-                [0.1, np.inf],
-                [0.3, np.inf],
-                [0.7, np.inf],
-                [0.9, np.inf],
-                [-np.inf, np.inf]]
+                [0.1, 1.0],
+                [0.3, 1.0],
+                [0.7, 1.0],
+                [0.9, 1.0],
+                [0.0, 1.0]]
             mode_idx = np.random.randint(len(sample_options))
             mode = sample_options[mode_idx]
             crop = False
@@ -179,11 +171,12 @@ class Data(RNGDataFlow):
 
                     rect = np.array([int(left), int(top), int(left + crop_w), int(top + crop_h)])
 
-                    # overlap = jaccard_numpy(boxes, rect)
-                    overlap = cal_overlap(boxes, rect)
+                    overlap = jaccard_numpy(boxes, rect)
+
+                    satisfy = (overlap > min_iou) * (overlap < max_iou)
 
                     # is min and max overlap constraint satisfied? if not try again
-                    if (overlap.min() < min_iou) or (overlap.max() > max_iou):
+                    if not satisfy.any():
                         continue
 
                     current_image = current_image[rect[1]:rect[3], rect[0]:rect[2], :]
@@ -264,6 +257,8 @@ class Data(RNGDataFlow):
 
             gt_box_a = gt_box.w * gt_box.h
 
+
+            # ugly, should be replaced with jaccard_numpy
             for anchor_idx, anchor in enumerate(cfg.all_anchors):
                 if gt_box_a > anchor[4] or gt_box_a < anchor[5]:
                     continue
