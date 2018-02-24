@@ -122,6 +122,9 @@ class Data(RNGDataFlow):
             boxes = boxes.copy()
             boxes[:, 0::2] = w - boxes[:, 2::-2]
 
+        ori_image = image.copy()
+        ori_boxes = boxes.copy()
+
         expand = 0
         if self.random_crop:
             # expand img
@@ -221,9 +224,12 @@ class Data(RNGDataFlow):
                     image = current_image
                     boxes = current_boxes
                     class_ary = current_class_ary
-                    box_num = boxes.shape[0]
-                    s = image.shape
-                    h, w, _ = image.shape
+                else:
+                    image = ori_image
+                    boxes = ori_boxes
+                box_num = boxes.shape[0]
+                s = image.shape
+                h, w, _ = image.shape
 
 
 
@@ -238,6 +244,9 @@ class Data(RNGDataFlow):
         gt_box_num = 0
         gt_box_coord = np.zeros((cfg.max_gt_box_shown, 4))
         for box_idx in range(box_num):
+            if class_ary.shape[0] < box_num:
+                import pdb
+                pdb.set_trace()
             class_num = class_ary[box_idx]
             if self.save_img:
                 cv2.rectangle(img_with_box,
