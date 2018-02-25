@@ -109,14 +109,15 @@ class VGGSSD(SSDModel):
         scale = variables.model_variable('conv4_3_scale',
                                          shape=scale_shape,
                                          dtype=conv4_3.dtype.base_dtype,
-                                         initializer=init_ops.ones_initializer(),
+                                         # initializer=init_ops.ones_initializer(),
+                                         initializer=tf.constant_initializer(20),
                                          trainable=True)
         if self.data_format == 'NCHW':
             scale = tf.expand_dims(scale, axis=-1)
             scale = tf.expand_dims(scale, axis=-1)
 
 
-        conv4_3_norm = 20 * tf.nn.l2_normalize(conv4_3, norm_dim)
+        conv4_3_norm = tf.nn.l2_normalize(conv4_3, norm_dim)
         conv4_3_scale = tf.multiply(conv4_3_norm, scale)
 
         features = [conv4_3_scale, conv7, conv8, conv9, conv10, conv11]

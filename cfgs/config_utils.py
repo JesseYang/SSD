@@ -39,7 +39,7 @@ def ssd_anchor_one_layer(img_shape, feat_shape, sizes, ratios, step, offset=0.5,
     xyxy[:, 2] = xywh[:, 0] + xywh[:, 2] / 2
     xyxy[:, 3] = xywh[:, 1] + xywh[:, 3] / 2
 
-    xyxy = np.minimum(np.maximum(xyxy, 0), 1)
+    # xyxy = np.minimum(np.maximum(xyxy, 0), 1)
 
     xywha = np.zeros((xyxy.shape[0], 6))
 

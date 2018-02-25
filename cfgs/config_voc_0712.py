@@ -26,12 +26,12 @@ cfg.class_num = len(cfg.classes_name)
 
 cfg.feat_shapes = [(38, 38), (19, 19), (10, 10), (5, 5), (3, 3), (1, 1)]
 
-cfg.anchor_sizes = [[0.1, np.sqrt(0.1 * 0.34)],
-                    [0.34, np.sqrt(0.34 * 0.48)],
-                    [0.48, np.sqrt(0.48 * 0.62)],
-                    [0.62, np.sqrt(0.62 * 0.76)],
-                    [0.76, np.sqrt(0.76 * 0.9)],
-                    [0.9, np.sqrt(0.9 * 1.04)]]
+cfg.anchor_sizes = [[0.1, np.sqrt(0.1 * 0.2)],
+                    [0.2, np.sqrt(0.2 * 0.37)],
+                    [0.37, np.sqrt(0.37 * 0.54)],
+                    [0.54, np.sqrt(0.54 * 0.71)],
+                    [0.71, np.sqrt(0.71 * 0.88)],
+                    [0.88, np.sqrt(0.88 * 1.05)]]
 cfg.anchor_sizes = np.asarray(cfg.anchor_sizes) * cfg.img_size
 
 cfg.anchor_ratios = [[2, 0.5],
