@@ -127,7 +127,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--gpu', help='comma separated list of GPU(s) to use.', default='0,1')
     parser.add_argument('--batch_size', help='batch size', type=int, default=32)
-    parser.add_argument('--itr', help='number of iterations', type=int, default=120000)
+    parser.add_argument('--itr', help='number of iterations', type=int, default=60000)
     parser.add_argument('--load', help='load model')
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--logdir', help="directory of logging", default=None)

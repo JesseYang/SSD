@@ -128,7 +128,7 @@ class Data(RNGDataFlow):
         expand = 0
         if self.random_crop:
             # expand img
-            expand = np.random.randint(2)
+            expand = np.random.randint(2) if cfg.random_expand else 0
             if expand == 1:
                 ratio = np.random.uniform(1, 4)
                 left = np.random.uniform(0, w * ratio - w)
