@@ -82,26 +82,19 @@ class SSDModel(ModelDesc):
 
     @abstractmethod
     def get_logits(self, image):
-        """
-        Args:
-            image: 4D tensor of cfg.img_hxcfg.img_w in ``self.data_format``
-        Returns:
-            cfg.img_h/32 x cfg.img_w/32 logits in ``self.data_format``
-        """
 
     def _build_graph(self, inputs):
-        # image, gt_boxes_loc, gt_boxes_label = inputs
         image, gt_bbox, conf_label, neg_mask, loc_label, ori_shape = inputs
         self.batch_size = tf.shape(image)[0]
 
-        image = tf.cast(image, tf.float32) * (1.0 / 255)
 
         image_with_bbox = tf.image.draw_bounding_boxes(image, gt_bbox)
         tf.summary.image('input-image', image_with_bbox, max_outputs=3)
 
-        image_mean = tf.constant([0.485, 0.456, 0.406], dtype=tf.float32)
-        image_std = tf.constant([0.229, 0.224, 0.225], dtype=tf.float32)
-        image = (image - image_mean) / image_std
+        image = tf.cast(image, tf.float32)
+        image_mean = tf.constant([123.68, 116.779, 103.939], dtype=tf.float32)
+        image = image - image_mean
+
         if self.data_format == "NCHW":
             image = tf.transpose(image, [0, 3, 1, 2])
 

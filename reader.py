@@ -152,6 +152,7 @@ class Data(RNGDataFlow):
                 None,   # use entire original input image
                 [0.1, 1.0],
                 [0.3, 1.0],
+                [0.5, 1.0],
                 [0.7, 1.0],
                 [0.9, 1.0],
                 [0.0, 1.0]]
