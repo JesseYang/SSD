@@ -82,6 +82,7 @@ class SSDModel(ModelDesc):
 
     @abstractmethod
     def get_logits(self, image):
+        pass
 
     def _build_graph(self, inputs):
         image, gt_bbox, conf_label, neg_mask, loc_label, ori_shape = inputs
