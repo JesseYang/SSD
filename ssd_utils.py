@@ -88,11 +88,11 @@ class SSDModel(ModelDesc):
         image, gt_bbox, conf_label, neg_mask, loc_label, ori_shape = inputs
         self.batch_size = tf.shape(image)[0]
 
+        image = tf.cast(image, tf.float32)
 
         image_with_bbox = tf.image.draw_bounding_boxes(image, gt_bbox)
         tf.summary.image('input-image', image_with_bbox, max_outputs=3)
 
-        image = tf.cast(image, tf.float32)
         image_mean = tf.constant([123.68, 116.779, 103.939], dtype=tf.float32)
         image = image - image_mean
 
