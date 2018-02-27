@@ -263,7 +263,7 @@ def get_data(train_or_test, batch_size):
     isTrain = train_or_test == 'train'
 
     filename_list = cfg.train_list if isTrain else cfg.test_list
-    ds = Data(filename_list, shuffle=isTrain, flip=isTrain, random_crop=cfg.random_crop and isTrain)
+    ds = Data(filename_list, shuffle=isTrain, flip=isTrain, random_crop=cfg.random_crop and isTrain, random_expand=cfg.random_expand and isTrain, random_inter=cfg.random_inter and isTrain)
 
     if isTrain:
         augmentors = [

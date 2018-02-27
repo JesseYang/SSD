@@ -50,7 +50,7 @@ def jaccard_numpy(box_a, box_b):
 
 
 class Data(RNGDataFlow):
-    def __init__(self, filename_list, shuffle, flip, random_crop, save_img=False):
+    def __init__(self, filename_list, shuffle, flip, random_crop, random_expand, random_inter, save_img=False):
         self.filename_list = filename_list
         self.save_img = save_img
 
@@ -75,6 +75,8 @@ class Data(RNGDataFlow):
         self.shuffle = shuffle
         self.flip = flip
         self.random_crop = random_crop
+        self.random_expand = random_expand
+        self.random_inter = random_inter
 
     def size(self):
         return len(self.imglist)
@@ -82,9 +84,6 @@ class Data(RNGDataFlow):
     def generate_sample(self, idx, image_height, image_width):
         hflip = False if self.flip == False else (random.random() > 0.5)
         line = self.imglist[idx]
-
-        grid_h = int(image_height / 32)
-        grid_w = int(image_width / 32)
 
         record = line.split(' ')
         record[1:] = [float(num) for num in record[1:]]
@@ -128,7 +127,7 @@ class Data(RNGDataFlow):
         expand = 0
         if self.random_crop:
             # expand img
-            expand = np.random.randint(2) if cfg.random_expand else 0
+            expand = np.random.randint(2) if self.random_expand else 0
             if expand == 1:
                 ratio = np.random.uniform(1, 4)
                 left = np.random.uniform(0, w * ratio - w)
@@ -163,11 +162,15 @@ class Data(RNGDataFlow):
                 min_iou, max_iou = mode
                 for _ in range(50):
                     current_image = image
-                    crop_w = np.random.uniform(0.3 * w, w)
-                    crop_h = np.random.uniform(0.3 * h, h)
 
-                    if crop_h / crop_w < 0.5 or crop_h / crop_w > 2:
-                        continue
+                    scale = np.random.uniform(0.3, 1.0)
+                    aspect_ratio = np.random.uniform(0.5, 2.0)
+
+                    aspect_ratio = np.maximum(aspect_ratio, scale ** 2)
+                    aspect_ratio = np.minimum(aspect_ratio, 1 / scale ** 2)
+
+                    crop_w = scale * np.sqrt(aspect_ratio) * w
+                    crop_h = scale / np.sqrt(aspect_ratio) * h
 
                     left = np.random.uniform(w - crop_w)
                     top = np.random.uniform(h - crop_h)
@@ -234,7 +237,12 @@ class Data(RNGDataFlow):
 
 
         img_with_box = np.copy(image) if self.save_img else None
-        image = cv2.resize(image, (image_width, image_height))
+        if self.random_inter:
+            inter_modes = [cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4]
+            inter_mode_idx = np.random.randint(5)
+            image = cv2.resize(image, (image_width, image_height), inter_modes[inter_mode_idx])
+        else:
+            image = cv2.resize(image, (image_width, image_height))
 
         anchor_iou = np.zeros((cfg.tot_anchor_num, ))
         # the backgound class is the 0th class
@@ -360,7 +368,7 @@ def generate_gt_result(test_path, gt_dir="result_gt", overwrite=True):
 
 if __name__ == '__main__':
     # df = Data('voc_2007_train.txt', shuffle=False, flip=False, affine_trans=False)
-    df = Data('temp.txt', shuffle=False, flip=True, random_crop=True, save_img=True)
+    df = Data('temp.txt', shuffle=False, flip=True, random_crop=True, random_expand=True, random_inter=True, save_img=True)
     df.reset_state()
 
     g = df.get_data()
