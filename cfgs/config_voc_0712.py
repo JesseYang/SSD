@@ -55,6 +55,7 @@ cfg.tot_anchor_num = cfg.all_anchors.shape[0]
 cfg.prior_scaling = [0.1, 0.1, 0.2, 0.2]
 
 cfg.random_expand = False
+cfg.random_crop = False
 
 cfg.classes_num = { }
 for idx, name in enumerate(cfg.classes_name):
