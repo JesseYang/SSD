@@ -91,7 +91,7 @@ class Data(RNGDataFlow):
         image = cv2.imread(record[0])
         s = image.shape
         h, w, c = image.shape
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
         box_num = (len(record) - 1) // 5
         boxes = np.zeros((box_num, 4))
@@ -114,7 +114,7 @@ class Data(RNGDataFlow):
                               (int(boxes[box_idx, 2]), int(boxes[box_idx, 3])),
                               self.colors[class_ary[box_idx] % len(self.colors)],
                               3)
-            misc.imsave(os.path.join(SAVE_DIR, "%d_with_box.jpg" % idx), ori_img_with_box)
+            cv2.imwrite(os.path.join(SAVE_DIR, "%d_with_box.jpg" % idx), ori_img_with_box)
 
         if hflip:
             image = cv2.flip(image, flipCode=1)
@@ -296,7 +296,7 @@ class Data(RNGDataFlow):
         anchor_neg_mask = anchor_iou < cfg.neg_iou_th
 
         if self.save_img:
-            misc.imsave(os.path.join(SAVE_DIR, "%d_with_box_aug_%d_%d_%d.jpg" % (idx, expand, mode_idx, int(crop))), img_with_box)
+            cv2.imwrite(os.path.join(SAVE_DIR, "%d_with_box_aug_%d_%d_%d.jpg" % (idx, expand, mode_idx, int(crop))), img_with_box)
 
         return [image, gt_box_coord, anchor_cls, anchor_neg_mask, anchor_loc, np.asarray(s)]
 

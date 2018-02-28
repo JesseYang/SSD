@@ -85,21 +85,29 @@ class SSDModel(ModelDesc):
         pass
 
     def _build_graph(self, inputs):
+        # for image input, the channle order should be BGR !!!!
         image, gt_bbox, conf_label, neg_mask, loc_label, ori_shape = inputs
         self.batch_size = tf.shape(image)[0]
 
-        image = tf.cast(image, tf.float32)
-
-        image_with_bbox = tf.image.draw_bounding_boxes(image, gt_bbox)
+        # when show image summary, first convert to RGB format
+        image_rgb = tf.reverse(image, axis=[-1])
+        image_with_bbox = tf.image.draw_bounding_boxes(image_rgb, gt_bbox)
         tf.summary.image('input-image', image_with_bbox, max_outputs=3)
 
-        image_mean = tf.constant([123.68, 116.779, 103.939], dtype=tf.float32)
-        image = image - image_mean
+        if image.dtype.base_dtype != tf.float32:
+            image = tf.cast(image, tf.float32)
+        image = image * (1.0 / 255)
+
+        mean = [0.485, 0.456, 0.406]    # rgb
+        std = [0.229, 0.224, 0.225]
+        mean = mean[::-1]
+        std = std[::-1]
+        image_mean = tf.constant(mean, dtype=tf.float32)
+        image_std = tf.constant(std, dtype=tf.float32)
+        image = (image - image_mean) / image_std
 
         if self.data_format == "NCHW":
             image = tf.transpose(image, [0, 3, 1, 2])
-
-        image = tf.identity(image, name='network_input')
 
         features = self.get_logits(image)
 
