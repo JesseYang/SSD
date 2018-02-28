@@ -89,13 +89,14 @@ class SSDModel(ModelDesc):
         image, gt_bbox, conf_label, neg_mask, loc_label, ori_shape = inputs
         self.batch_size = tf.shape(image)[0]
 
+        if image.dtype.base_dtype != tf.float32:
+            image = tf.cast(image, tf.float32)
+
         # when show image summary, first convert to RGB format
         image_rgb = tf.reverse(image, axis=[-1])
         image_with_bbox = tf.image.draw_bounding_boxes(image_rgb, gt_bbox)
         tf.summary.image('input-image', image_with_bbox, max_outputs=3)
 
-        if image.dtype.base_dtype != tf.float32:
-            image = tf.cast(image, tf.float32)
         image = image * (1.0 / 255)
 
         mean = [0.485, 0.456, 0.406]    # rgb
