@@ -140,9 +140,11 @@ if __name__ == '__main__':
     model = VGGSSD()
     if args.flops:
         input_desc = [
-            InputDesc(tf.uint8, [2, cfg.img_h, cfg.img_w, 3], 'input'),
-            InputDesc(tf.int32, [2, cfg.tot_anchor_num], 'conf_label'),
-            InputDesc(tf.float32, [2, cfg.tot_anchor_num, 4], 'loc_label'),
+            InputDesc(tf.uint8, [1, cfg.img_h, cfg.img_w, 3], 'input'),
+            InputDesc(tf.float32, [1, cfg.max_gt_box_shown, 4], 'gt_bboxes'),
+            InputDesc(tf.int32, [1, cfg.tot_anchor_num], 'conf_label'),
+            InputDesc(tf.bool, [1, cfg.tot_anchor_num], 'neg_mask'),
+            InputDesc(tf.float32, [1, cfg.tot_anchor_num, 4], 'loc_label'),
             InputDesc(tf.float32, [1, 3], 'ori_shape'),
         ]
         input = PlaceholderInput()

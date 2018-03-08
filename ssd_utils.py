@@ -55,7 +55,7 @@ class SSDModel(ModelDesc):
         W_init = tf.contrib.layers.xavier_initializer()
         # location
         loc_pred_num = anchor_num * 4
-        loc_pred = Conv2D('conv_loc', feature, loc_pred_num, 3, kernel_initializer=W_init)
+        loc_pred = Conv2D('conv_loc', feature, loc_pred_num, 3, kernel_initializer=W_init, data_format=self.data_format)
         if self.data_format == 'NCHW':
             loc_pred = tf.transpose(loc_pred, [0, 2, 3, 1])
         # loc_pred = tf.reshape(loc_pred, [-1, h, w, anchor_num, 4])
@@ -63,10 +63,11 @@ class SSDModel(ModelDesc):
 
         # class prediction
         cls_pred_num = anchor_num * (cfg.class_num + 1)
-        cls_pred = Conv2D('conv_cls', feature, cls_pred_num, 3, kernel_initializer=W_init)
+        cls_pred = Conv2D('conv_cls', feature, cls_pred_num, 3, kernel_initializer=W_init, data_format=self.data_format)
         if self.data_format == 'NCHW':
-            loc_pred = tf.transpose(cls_pred, [0, 2, 3, 1])
+            cls_pred = tf.transpose(cls_pred, [0, 2, 3, 1])
         # cls_pred = tf.reshape(cls_pred, [-1, h, w, anchor_num, (cfg.class_num + 1)])
+
         cls_pred = tf.reshape(cls_pred, [-1, h * w * anchor_num, (cfg.class_num + 1)])
 
         return loc_pred, cls_pred
