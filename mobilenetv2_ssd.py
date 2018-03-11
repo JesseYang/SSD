@@ -119,12 +119,18 @@ class SSDLite(SSDModel):
             # 10
             with tf.variable_scope('bottleneck7'):
                 l, _ = bottleneck_v2(l, out_channel=320, t=6, stride=1)
-            feat_2 = Conv2D('conv2', l, 1280, 1, nl=BNReLU)
+
+            if cfg.freeze_backbone == True:
+                feat_1 = tf.stop_gradient(feat_1)
+                l = tf.stop_gradient(l)
+
+            # feat_2 = Conv2D('conv2', l, 1280, 1, nl=BNReLU)
+            feat_2 = Conv2D('extra_conv1_1', l, 256, 1, nl=BNReLU)
 
             # the extra layers
             # 5
             feat_3 = (LinearWrap(feat_2)
-                     .Conv2D('extra_conv1_1', 256, 1)
+                     # .Conv2D('extra_conv1_1', 256, 1)
                      .DepthConv('extra_conv1_2', 256, 3, stride=2)
                      .Conv2D('extra_conv1_3', 512, 1)())
 
@@ -153,7 +159,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--gpu', help='comma separated list of GPU(s) to use.', default='0,1')
     parser.add_argument('--batch_size', help='batch size', type=int, default=32)
-    parser.add_argument('--itr', help='number of iterations', type=int, default=60000)
+    parser.add_argument('--itr', help='number of iterations', type=int, default=120000)
     parser.add_argument('--load', help='load model')
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--logdir', help="directory of logging", default=None)
