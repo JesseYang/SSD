@@ -16,18 +16,14 @@ cfg.weight_decay = 5e-4
 
 cfg.leaky_k = 0.125
 
-cfg.classes_name =  ["aeroplane", "bicycle", "bird", "boat",
-                     "bottle", "bus", "car", "cat",
-                     "chair", "cow", "diningtable", "dog",
-                     "horse", "motorbike", "person", "pottedplant",
-                     "sheep", "sofa", "train","tvmonitor"]
+cfg.classes_name = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush']
 
 cfg.class_num = len(cfg.classes_name)
 
 cfg.feat_shapes = [(20, 20), (10, 10), (5, 5), (3, 3), (2, 2), (1, 1)]
 
-cfg.anchor_sizes = [[0.1, np.sqrt(0.1 * 0.2)],
-                    [0.2, np.sqrt(0.2 * 0.37)],
+cfg.anchor_sizes = [[0.07, np.sqrt(0.07 * 0.15)],
+                    [0.15, np.sqrt(0.15 * 0.37)],
                     [0.37, np.sqrt(0.37 * 0.54)],
                     [0.54, np.sqrt(0.54 * 0.71)],
                     [0.71, np.sqrt(0.71 * 0.88)],
@@ -62,8 +58,8 @@ cfg.classes_num = { }
 for idx, name in enumerate(cfg.classes_name):
     cfg.classes_num[name] = idx
 
-cfg.train_list = ["voc_2007_train.txt", "voc_2012_train.txt", "voc_2007_val.txt", "voc_2012_val.txt"]
-cfg.test_list = "voc_2007_test_without_diff.txt"
+cfg.train_list = ["coco_train.txt"]
+cfg.test_list = "coco_val.txt"
 
 cfg.train_sample_num = 0
 for train_file in cfg.train_list:
@@ -82,7 +78,7 @@ cfg.hard_sample_mining = True
 cfg.alpha = 1.0
 cfg.freeze_backbone = False
 
-cfg.mAP = True
+cfg.mAP = False
 
 cfg.neg_ratio = 3
 
