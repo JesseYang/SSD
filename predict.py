@@ -22,18 +22,20 @@ except Exception:
 
 try:
     from .vgg_ssd import VGGSSD
+    from .mobilenetv2_ssd import SSDLite
 except Exception:
     from vgg_ssd import VGGSSD
+    from mobilenetv2_ssd import SSDLite
 
 def get_pred_func(args):
     sess_init = SaverRestore(args.model_path)
-    model = VGGSSD()
+    model = VGGSSD() if args.backbone == 'vgg' else SSDLite(data_format="NCHW")
     predict_config = PredictConfig(session_init=sess_init,
                                    model=model,
                                    input_names=["input"],
                                    output_names=["loc_pred", "cls_pred"])
 
-    predict_func = OfflinePredictor(predict_config) 
+    predict_func = OfflinePredictor(predict_config)
     return predict_func
 
 def draw_result(image, boxes):
@@ -166,6 +168,7 @@ def generate_pred_images(image_paths, predict_func, crop, output_dir, det_th, en
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('--backbone', help='the backbone network', default='mobilenetv2')
     parser.add_argument('--model_path', help='path of the model waiting for validation.')
     parser.add_argument('--data_format', choices=['NCHW', 'NHWC'], default='NHWC')
     parser.add_argument('--input_path', help='path of the input image')
