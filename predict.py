@@ -121,6 +121,8 @@ def generate_pred_result(image_paths, predict_func, pred_dir):
                     f.write(' '.join(record) + '\n')
 
 def generate_pred_images(image_paths, predict_func, crop, output_dir, det_th, enlarge_ratio=1.3):
+    json_file = []
+    img_id = 0
     for image_idx, image_path in enumerate(image_paths):
         if not os.path.exists(image_path):
             continue
@@ -155,7 +157,15 @@ def generate_pred_images(image_paths, predict_func, crop, output_dir, det_th, en
                     name_part, img_type = image_name.split('.')
                     save_name = name_part + "_" + klass + "_" + str(box_idx) + "." + img_type
                     save_path = os.path.join(output_dir, save_name)
-                    cv2.imwrite(save_path, crop_img)
+                    # cv2.imwrite(save_path, crop_img)
+                    result_dict = {}
+                    img_id += 1
+                    result_dict['image_id'] = image_idx
+                    result_dict['category_id'] = box_idx
+                    result_dict['bbox'] = [int(xmin), int(ymin), int(xmax-xmin), int(ymax-ymin)]
+                    result_dict['score'] = float(round(conf, 3))
+                    json_file.append(result_dict)
+
 
         else:
             # draw box on original image and save
@@ -165,7 +175,9 @@ def generate_pred_images(image_paths, predict_func, crop, output_dir, det_th, en
             # cv2.imwrite(save_path, image_result)
             cv2.imwrite(save_path, image_result)
 
-
+        # print(json_file)
+    save_json = open("result.json", 'w')
+    save_json.write(str(json_file))
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--backbone', help='the backbone network', default='mobilenetv2')

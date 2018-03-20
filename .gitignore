@@ -10,3 +10,4 @@ annotations_cache
 input_images
 *.jpg
 *.tar.gz
+*.json
