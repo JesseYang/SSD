@@ -9,6 +9,16 @@ from scipy import misc
 import argparse
 import json
 import cv2
+import re
+
+# %matplotlib inline
+import matplotlib.pyplot as plt
+from pycocotools.coco import COCO
+from pycocotools.cocoeval import COCOeval
+import skimage.io as io
+import pylab
+
+
 
 from tensorpack.tfutils.sesscreate import SessionCreatorAdapter, NewSessionCreator
 from tensorpack import *
@@ -120,15 +130,19 @@ def generate_pred_result(image_paths, predict_func, pred_dir):
                     record = [str(ele) for ele in record]
                     f.write(' '.join(record) + '\n')
 
-def generate_pred_images(image_paths, predict_func, crop, output_dir, det_th, enlarge_ratio=1.3):
+def generate_pred_images(image_paths, predict_func, crop, generate_resultfomat, evaluate_name, output_dir, det_th, enlarge_ratio=1.3):
     json_file = []
-    img_id = 0
+   
     for image_idx, image_path in enumerate(image_paths):
+        # if image_idx >= 2:
+        #     continue
+
         if not os.path.exists(image_path):
             continue
         if image_idx % 100 == 0 and image_idx > 0:
             print(str(image_idx))
-        print(image_path)
+        # print(image_path)
+        img_name = image_path.split('/')[-1].split('.')[0]
         ori_image = cv2.imread(image_path)
 
         cvt_color_image = cv2.cvtColor(ori_image, cv2.COLOR_BGR2RGB)
@@ -157,16 +171,17 @@ def generate_pred_images(image_paths, predict_func, crop, output_dir, det_th, en
                     name_part, img_type = image_name.split('.')
                     save_name = name_part + "_" + klass + "_" + str(box_idx) + "." + img_type
                     save_path = os.path.join(output_dir, save_name)
-                    # cv2.imwrite(save_path, crop_img)
-                    result_dict = {}
-                    img_id += 1
-                    result_dict['image_id'] = image_idx
-                    result_dict['category_id'] = box_idx
-                    result_dict['bbox'] = [int(xmin), int(ymin), int(xmax-xmin), int(ymax-ymin)]
-                    result_dict['score'] = float(round(conf, 3))
-                    json_file.append(result_dict)
+                    if generate_resultfomat:
+                        result_dict = {}
+                        result_dict["image_id"] = int(re.sub(r"\b0*([1-9][0-9]*|0)", r"\1", img_name))
+                        result_dict["category_id"] = int(cfg.classes_label[klass])
+                        result_dict["bbox"] = [int(xmin), int(ymin), int(xmax-xmin), int(ymax-ymin)]
+                        result_dict["score"] = float(round(conf, 3))
+                        json_file.append(json.dumps(result_dict))
 
-
+                    else:
+                        cv2.imwrite(save_path, crop_img)
+                    
         else:
             # draw box on original image and save
             image_result = draw_result(ori_image, boxes)
@@ -175,9 +190,62 @@ def generate_pred_images(image_paths, predict_func, crop, output_dir, det_th, en
             # cv2.imwrite(save_path, image_result)
             cv2.imwrite(save_path, image_result)
 
-        # print(json_file)
-    save_json = open("result.json", 'w')
-    save_json.write(str(json_file))
+    if generate_resultfomat:
+        save_json = open(evaluate_name, 'w')
+        save_json.write("[")
+        for idx, i in enumerate(json_file):
+            
+            save_json.write(i)
+
+            if idx == (len(json_file)-1):
+                save_json.write("]")
+            else:
+                save_json.write(",")
+        save_json.close()
+        
+
+def evaluate_map(annotations, evaluate_name):
+
+    print("strat evaluate......")
+    pylab.rcParams['figure.figsize'] = (10.0, 8.0)
+    annType = ['segm','bbox','keypoints']
+    annType = annType[1]      #specify type here
+    prefix = 'person_keypoints' if annType=='keypoints' else 'instances'
+    # print (annType)
+    
+    #initialize COCO ground truth api
+    # dataDir="/home/user/Datasets/coco"
+    # dataType='val2017'
+    # annFile = '%s/annotations/%s_%s.json'%(dataDir,prefix,dataType)
+    # annFile = annotations
+    # print(annFile)
+    print(annotations)
+    cocoGt=COCO(annotations)
+
+    #initialize COCO detections api
+    # resFile='%s/%s_%s_fake%s100_results.json'
+    # resFile = resFile%(dataDir, prefix, dataType, annType)
+    resFile = os.path.join('/home/user/yzx/SSD',evaluate_name)
+    
+    if not os.path.exists(resFile):
+        print(resFile,"not exists")
+        quit()
+    print(resFile)
+    cocoDt=cocoGt.loadRes(resFile)
+
+    imgIds=sorted(cocoGt.getImgIds())
+    imgIds=imgIds[0:100]
+    imgId = imgIds[np.random.randint(100)]
+
+    # running evaluation
+    cocoEval = COCOeval(cocoGt,cocoDt,annType)
+    cocoEval.params.imgIds  = imgIds
+    cocoEval.evaluate()
+    cocoEval.accumulate()
+    cocoEval.summarize()
+
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--backbone', help='the backbone network', default='mobilenetv2')
@@ -187,16 +255,26 @@ if __name__ == '__main__':
     parser.add_argument('--output_path', help='path of the output image', default='output.png')
     parser.add_argument('--test_path', help='path of the test file', default=None)
     parser.add_argument('--pred_dir', help='directory to save txt result', default='result_pred')
-    parser.add_argument('--det_th', help='detection threshold', type=float, default=0.25)
+    parser.add_argument('--det_th', help='detection threshold', type=float, default=0.01)
     parser.add_argument('--gen_image', action='store_true')
     parser.add_argument('--crop', action='store_true')
     parser.add_argument('--output_dir', help='directory to save image result', default='output')
+
+    ##evaluate parameter
+    parser.add_argument('--generate_resultfomat', help='if generate json file for coco map compute', action='store_true')
+    parser.add_argument('--evaluate_name', help='the evaluate result .json file name', default='train2017_result.json')
+    parser.add_argument('--annotations_path', help='path of annotations json file', default='coco/annotations/instances_train2017.json')
+    parser.add_argument('--map_evaluate', action='store_true')
+
     args = parser.parse_args()
 
     os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+    if args.map_evaluate:
+        evaluate_map(args.annotations_path, args.evaluate_name)
+        quit()
 
     predict_func = get_pred_func(args)
-
+    
     new_dir = args.output_dir if args.gen_image else args.pred_dir
 
     if os.path.isdir(new_dir):
@@ -217,7 +295,18 @@ if __name__ == '__main__':
         print("Number of images to predict: " + str(len(image_paths)))
         if args.gen_image:
             # given the txt file, predict the images and save the images result
-            generate_pred_images(image_paths, predict_func, args.crop, args.output_dir, float(args.det_th))
+            generate_pred_images(image_paths, predict_func, args.crop, args.generate_resultfomat, args.evaluate_name, args.output_dir, float(args.det_th))
         else:
             # given the txt file, predict the images and save the txt result
             generate_pred_result(image_paths, predict_func, args.pred_dir)
+
+# note:
+#     if only predict image from .txt  file:
+#         python3 predict.py --model_path train_log/ssdlite_coco/model-238160 --data_format NCHW --test_path coco_val.txt --gen_image --crop
+
+    
+#     if want to evaluate model,first genterate .json file
+#         python3 predict.py --model_path train_log/ssdlite_coco/model-238160 --data_format NCHW --test_path coco_val.txt --gen_image --crop --generate_resultfomat
+
+          
+          # then python3 predict.py --map_evaluate
