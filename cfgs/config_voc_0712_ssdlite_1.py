@@ -4,17 +4,11 @@ from .config_utils import *
 
 cfg = edict()
 
-cfg.img_size = 320
+cfg.img_size = 300
 cfg.img_w = cfg.img_size
 cfg.img_h = cfg.img_size
 
-cfg.n_boxes = 5
-
-cfg.threshold = 0.6
-
-cfg.weight_decay = 5e-4
-
-cfg.leaky_k = 0.125
+cfg.weight_decay = 1e-4
 
 cfg.classes_name =  ["aeroplane", "bicycle", "bird", "boat",
                      "bottle", "bus", "car", "cat",
@@ -24,14 +18,14 @@ cfg.classes_name =  ["aeroplane", "bicycle", "bird", "boat",
 
 cfg.class_num = len(cfg.classes_name)
 
-cfg.feat_shapes = [(20, 20), (10, 10), (5, 5), (3, 3), (2, 2), (1, 1)]
+cfg.feat_shapes = [(19, 19), (10, 10), (5, 5), (3, 3), (2, 2), (1, 1)]
 
-cfg.anchor_sizes = [[0.1, np.sqrt(0.1 * 0.2)],
-                    [0.2, np.sqrt(0.2 * 0.37)],
-                    [0.37, np.sqrt(0.37 * 0.54)],
-                    [0.54, np.sqrt(0.54 * 0.71)],
-                    [0.71, np.sqrt(0.71 * 0.88)],
-                    [0.88, np.sqrt(0.88 * 1.05)]]
+cfg.anchor_sizes = [[0.15, np.sqrt(0.15 * 0.3)],
+                    [0.3, np.sqrt(0.3 * 0.45)],
+                    [0.45, np.sqrt(0.45 * 0.6)],
+                    [0.6, np.sqrt(0.6 * 0.75)],
+                    [0.75, np.sqrt(0.75 * 0.9)],
+                    [0.9, np.sqrt(0.9 * 1.05)]]
 cfg.anchor_sizes = np.asarray(cfg.anchor_sizes) * cfg.img_size
 
 cfg.anchor_ratios = [[2, 0.5, 3, 1/3],
@@ -42,7 +36,7 @@ cfg.anchor_ratios = [[2, 0.5, 3, 1/3],
                      [2, 0.5]]
 cfg.anchor_ratios = np.asarray(cfg.anchor_ratios)
 
-cfg.anchor_steps=[16, 32, 64, 106, 160, 320]
+cfg.anchor_steps = [16, 32, 64, 100, 150, 300]
 
 cfg.all_anchors = ssd_anchor_all_layers([cfg.img_size, cfg.img_size],
                                         cfg.feat_shapes,

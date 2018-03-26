@@ -291,25 +291,19 @@ def get_data(train_or_test, batch_size):
 
 
 def get_config(args, model):
-    if args.gpu != None:
-        NR_GPU = len(args.gpu.split(','))
-        batch_size = int(args.batch_size) // NR_GPU
-    else:
-        batch_size = int(args.batch_size)
 
-    ds_train = get_data('train', batch_size)
-    ds_test = get_data('test', batch_size)
+    ds_train = get_data('train', args.batch_size_per_gpu)
+    ds_test = get_data('test', args.batch_size_per_gpu)
 
     callbacks = [
       ModelSaver(),
       PeriodicTrigger(InferenceRunner(ds_test,
                                       ScalarStats(['conf_loss', 'loc_loss', 'loss'])),
                       every_k_epochs=3),
-      ScheduledHyperParamSetter('learning_rate',
-                                cfg.lr_schedule,
-                                step_based=True),
-      # HyperParamSetterWithFunc('learning_rate',
-      #                          lambda e, x: 1e-3 * 0.98 ** e),
+      # ScheduledHyperParamSetter('learning_rate',
+      #                           cfg.lr_schedule),
+      HyperParamSetterWithFunc('learning_rate',
+                               lambda e, x: (0.5 * 1e-3 * (1 + np.cos((e - 100) / 200 * np.pi))) if e >= 100 else 1e-3 ),
       HumanHyperParamSetter('learning_rate'),
     ]
     if cfg.mAP == True:
@@ -324,6 +318,6 @@ def get_config(args, model):
         dataflow=ds_train,
         callbacks=callbacks,
         model=model,
-        steps_per_epoch=cfg.train_sample_num // args.batch_size,
-        max_epoch=args.itr // (cfg.train_sample_num // args.batch_size),
+        steps_per_epoch=cfg.train_sample_num // (args.batch_size_per_gpu * get_nr_gpu()),
+        max_epoch=300,
     )

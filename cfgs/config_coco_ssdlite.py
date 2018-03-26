@@ -32,7 +32,7 @@ cfg.anchor_sizes = [[0.07, np.sqrt(0.07 * 0.15)],
                     [0.88, np.sqrt(0.88 * 1.05)]]
 cfg.anchor_sizes = np.asarray(cfg.anchor_sizes) * cfg.img_size
 
-cfg.anchor_ratios = [[2, 0.5],
+cfg.anchor_ratios = [[2, 0.5, 3, 1/3],
                      [2, 0.5, 3, 1/3],
                      [2, 0.5, 3, 1/3],
                      [2, 0.5, 3, 1/3],
