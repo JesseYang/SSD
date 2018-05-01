@@ -17,6 +17,7 @@ import tensorflow as tf
 from tensorflow.contrib.layers import variance_scaling_initializer
 from tensorpack import *
 from tensorpack.utils.stats import RatioCounter
+from tensorpack.utils.gpu import get_nr_gpu
 from tensorpack.tfutils.symbolic_functions import *
 from tensorpack.tfutils.summary import *
 from tensorpack.tfutils.sesscreate import SessionCreatorAdapter, NewSessionCreator
@@ -186,10 +187,6 @@ class SSDModel(ModelDesc):
 
     def _get_optimizer(self):
         lr = get_scalar_var('learning_rate', 1e-3, summary=True)
-        # return tf.train.AdamOptimizer(lr,
-        #                               beta1=0.9,
-        #                               beta2=0.999,
-        #                               epsilon=1.0)
         return tf.train.MomentumOptimizer(lr, 0.9, use_nesterov=True)
 
 class CalMAP(Inferencer):
@@ -313,7 +310,7 @@ def get_config(args, model):
                                           every_k_epochs=3),
                          lambda x : x.epoch_num >= 10)),
 
-    steps_per_epoch=cfg.train_sample_num // (args.batch_size_per_gpu * get_nr_gpu()),
+    steps_per_epoch = cfg.train_sample_num // (args.batch_size_per_gpu * get_nr_gpu())
     max_epoch = cfg.max_itr // steps_per_epoch
 
     return TrainConfig(
