@@ -300,10 +300,11 @@ def get_config(args, model):
       PeriodicTrigger(InferenceRunner(ds_test,
                                       ScalarStats(['conf_loss', 'loc_loss', 'loss'])),
                       every_k_epochs=3),
-      # ScheduledHyperParamSetter('learning_rate',
-      #                           cfg.lr_schedule),
-      HyperParamSetterWithFunc('learning_rate',
-                               lambda e, x: (0.5 * 1e-3 * (1 + np.cos((e - 100) / 200 * np.pi))) if e >= 100 else 1e-3 ),
+      ScheduledHyperParamSetter('learning_rate',
+                                cfg.lr_schedule,
+                                step_based=True),
+      # HyperParamSetterWithFunc('learning_rate',
+      #                          lambda e, x: (0.5 * 1e-3 * (1 + np.cos((e - 100) / 200 * np.pi))) if e >= 100 else 1e-3 ),
       HumanHyperParamSetter('learning_rate'),
     ]
     if cfg.mAP == True:
@@ -312,12 +313,13 @@ def get_config(args, model):
                                           every_k_epochs=3),
                          lambda x : x.epoch_num >= 10)),
 
-    if args.debug:
-      callbacks.append(HookToCallback(tf_debug.LocalCLIDebugHook()))
+    steps_per_epoch=cfg.train_sample_num // (args.batch_size_per_gpu * get_nr_gpu()),
+    max_epoch = cfg.max_itr // steps_per_epoch
+
     return TrainConfig(
         dataflow=ds_train,
         callbacks=callbacks,
         model=model,
-        steps_per_epoch=cfg.train_sample_num // (args.batch_size_per_gpu * get_nr_gpu()),
-        max_epoch=300,
+        steps_per_epoch=steps_per_epoch,
+        max_epoch=max_epoch,
     )

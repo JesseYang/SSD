@@ -39,8 +39,7 @@ class VGGFSSD(SSDModel):
 
     def get_logits(self, image):
 
-        with argscope([Conv2D], kernel_shape=3, nl=tf.nn.relu, kernel_initializer=tf.contrib.layers.xavier_initializer()), \
-        	 argscope([Conv2D, MaxPooling, BatchNorm], data_format="NHWC"):
+        with argscope([Conv2D], kernel_shape=3, nl=tf.nn.relu, kernel_initializer=tf.contrib.layers.xavier_initializer()):
             conv4_3 = (LinearWrap(image)
                       .Conv2D('conv1_1', 64)
                       .Conv2D('conv1_2', 64)
@@ -71,64 +70,50 @@ class VGGFSSD(SSDModel):
                 conv4_3 = tf.stop_gradient(conv4_3)
                 conv5 = tf.stop_gradient(conv5)
 
-            feature_1 = (LinearWrap(conv4_3)
-                    .Conv2D('feature_1', 256, 1)
-                    .BatchNorm('bn1_1')())
+            conv6 = Conv2D('conv6', conv5, 1024, 3, dilation_rate=6)
+            conv7 = Conv2D('conv7', conv6, 1024, 1)
 
-            feature_2 = (LinearWrap(feature_1)
-                    .Conv2D('feature_2', 1024, 1)
-                    .BatchNorm('bn2_1')())
-            feature_2_1 = (LinearWrap(feature_2)
-                    .Conv2D('feature_2_1', 256, 1)
-                    .BatchNorm('bn2_2')())
-            feature_2_2 = tf.image.resize_images(feature_2_1, (38, 38), 0)
-           
-            feature_3 = (LinearWrap(conv5)
-                    .Conv2D('feature_3_1', 256, 1)
-                    .BatchNorm('bn3_1')
-                    .Conv2D('feature_3_2', 512)
-                    .BatchNorm('bn3_2')
-                    .Conv2D('feature_3_3', 128, 1)
-                    .BatchNorm('bn3_3')
-                    .Conv2D('feature_3_4', 256, stride = 2)
-                    .BatchNorm('bn3_4')())
-            feature_3_5 = tf.image.resize_images(feature_3, (38, 38), 0)
+            # 10
+            conv9 = (LinearWrap(conv7)
+                    .Conv2D('conv8_1', 256, 1)
+                    .Conv2D('conv8_2', 512, 3)
+                    .Conv2D('conv9_1', 128, 1)
+                    .Conv2D('conv9_2', 256, 3, stride=2)())
+
+            # conv4_3, conv7, and conv8 should be transformed and concatenated to obtain the fused features
+            conv4_3_t = Conv2D('conv4_3_t', conv4_3, 256, 1)
+            feat_size = tf.shape(conv4_3_t)[2:4] if self.data_format == "NCHW" else tf.shape(conv4_3_t)[1:3]
+            conv7_t = Conv2D('conv7_t', conv7, 256, 1)
+            conv7_t_u = tf.image.resize_bilinear(conv7_t, feat_size, name='conv7_upsample')
+            conv9_t = Conv2D('conv9_t', conv9, 256, 1)
+            conv9_t_u = tf.image.resize_bilinear(conv9_t, feat_size, name='conv9_upsample')
+
             if self.data_format == 'NCHW':
-                features = tf.concat([feature_1, feature_2_2, feature_3_5], 1)
+                fuse_features = tf.concat([conv4_3_t, conv7_t_u, conv9_t_u], 1)
             else:
-                features = tf.concat([feature_1, feature_2_2, feature_3_5], -1)
-            features = BatchNorm('bn_feat', features)
+                fuse_features = tf.concat([conv4_3_t, conv7_t_u, conv9_t_u], 3)
 
-            feature1 = (LinearWrap(features)
-            		.Conv2D('fea1_1', 256, 1)
-                    .Conv2D('fea1_2', 512)
-                    .BatchNorm('bn1')())
+            # 38
+            fuse_features = BatchNorm('bn_feat', fuse_features)
 
-            feature2 = (LinearWrap(feature1)
-            		.Conv2D('fea2_1', 256, 1)
-                    .Conv2D('fea2_2', 512, stride=2)
-                    .BatchNorm('bn2')())
+            # 38
+            feature1 = Conv2D('conv_feat1', fuse_features, 512)
 
-            feature3 = (LinearWrap(feature2)
-            		.Conv2D('fea3_1', 128, 1)
-                    .Conv2D('fea3_2', 256, stride=2)
-                    .BatchNorm('bn3')())
+            # 19
+            feature2 = Conv2D('conv_feat2', feature1, 512, stride=2)
 
-            feature4 = (LinearWrap(feature3)
-            		.Conv2D('fea4_1', 128, 1)
-                    .Conv2D('fea4_2', 256, stride=2)
-                    .BatchNorm('bn4')())
+            # 10
+            feature3 = Conv2D('conv_feat3', feature2, 256, stride=2)
 
-            feature5 = (LinearWrap(feature4)
-                    .Conv2D('fea5_1', 128, 1)
-                    .Conv2D('fea5_2', 256, padding='VALID')
-                    .BatchNorm('bn5')())
+            # 5
+            feature4 = Conv2D('conv_feat4', feature3, 256, stride=2)
 
-            feature6 = (LinearWrap(feature5)
-                    # .Conv2D('convf6', 128,)
-                    .Conv2D('fea6', 256, padding='VALID')
-                    .BatchNorm('bn6')())
-            # pdb.set_trace()
+            # 3
+            feature5 = Conv2D('conv_feat5', feature4, 256, padding='VALID')
+
+            # 1
+            feature6 = Conv2D('conv_feat6', feature5, 256, padding='VALID')
+
         return [feature1, feature2, feature3, feature4, feature5, feature6]
 
 if __name__ == '__main__':
