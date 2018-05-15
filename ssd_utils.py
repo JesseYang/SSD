@@ -25,14 +25,16 @@ from tensorflow.python import debug as tf_debug
 
 try:
     from .cfgs.config import cfg
-    from .reader import Data, generate_gt_result
+    from .reader import Data as DataTest
     from .evaluate import do_python_eval
-    from .utils import postprocess
+    from .utils_bak import postprocess
+    from .reader_pytorch import Data, generate_gt_result
 except Exception:
     from cfgs.config import cfg
-    from reader import Data, generate_gt_result
+    from reader import Data as DataTest
     from evaluate import do_python_eval
-    from utils import postprocess
+    from utils_bak import postprocess
+    from reader_pytorch import Data, generate_gt_result
 
 class SSDModel(ModelDesc):
 
@@ -240,10 +242,14 @@ class CalMAP(Inferencer):
                 if class_name not in self.results.keys():
                     self.results[class_name] = []
                 for box in pred_results[class_name]:
-                    record = [image_id]
-                    record.extend(box)
-                    record = [str(ele) for ele in record]
-                    self.results[class_name].append(' '.join(record))
+                    # 000067 1.000 26.6 73.4 455.0 210.2
+                    record = "%s %.3f %.1f %.1f %.1f %.1f" % \
+                             (image_id, box[4], box[0], box[1], box[2], box[3])
+                    self.results[class_name].append(record)
+                    # record = [image_id]
+                    # record.extend(box)
+                    # record = [str(ele) for ele in record]
+                    # self.results[class_name].append(' '.join(record))
 
     def _after_inference(self):
         # write the result to file
@@ -264,7 +270,11 @@ def get_data(train_or_test, batch_size):
     isTrain = train_or_test == 'train'
 
     filename_list = cfg.train_list if isTrain else cfg.test_list
-    ds = Data(filename_list, shuffle=isTrain, flip=isTrain, random_crop=cfg.random_crop and isTrain, random_expand=cfg.random_expand and isTrain, random_inter=cfg.random_inter and isTrain)
+    if isTrain == True:
+        ds = Data(filename_list, shuffle=isTrain, flip=isTrain, random_crop=cfg.random_crop and isTrain, random_expand=cfg.random_expand and isTrain, random_inter=cfg.random_inter and isTrain)
+    else:
+        ds = DataTest(filename_list, shuffle=isTrain, flip=isTrain, random_crop=cfg.random_crop and isTrain, random_expand=cfg.random_expand and isTrain, random_inter=cfg.random_inter and isTrain)
+        
 
     if isTrain:
         augmentors = [

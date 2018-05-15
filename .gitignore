@@ -1,4 +1,6 @@
 *__pycache__
+data
+utils
 *.txt
 coco
 voc

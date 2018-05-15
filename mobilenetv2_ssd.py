@@ -172,7 +172,6 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size_per_gpu', help='batch size per gpu', type=int, default=64)
     parser.add_argument('--itr', help='number of iterations', type=int, default=240000)
     parser.add_argument('--load', help='load model')
-    parser.add_argument('--debug', action='store_true')
     parser.add_argument('--logdir', help="directory of logging", default=None)
     parser.add_argument('--flops', action="store_true", help="print flops and exit")
     args = parser.parse_args()
