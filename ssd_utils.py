@@ -275,6 +275,7 @@ def get_data(train_or_test, batch_size):
     else:
         ds = DataTest(filename_list, shuffle=isTrain, flip=isTrain, random_crop=cfg.random_crop and isTrain, random_expand=cfg.random_expand and isTrain, random_inter=cfg.random_inter and isTrain)
         
+    sample_num = ds.size()
 
     if isTrain:
         augmentors = [
@@ -294,19 +295,24 @@ def get_data(train_or_test, batch_size):
     ds = BatchData(ds, batch_size, remainder=not isTrain)
     if isTrain:
         ds = PrefetchDataZMQ(ds, min(6, multiprocessing.cpu_count()))
-    return ds
+    return ds, sample_num
 
 
 def get_config(args, model):
 
-    ds_train = get_data('train', args.batch_size_per_gpu)
-    ds_test = get_data('test', args.batch_size_per_gpu)
+    ds_train, train_sample_num = get_data('train', args.batch_size_per_gpu)
+    ds_test, _ = get_data('test', args.batch_size_per_gpu)
 
-    callbacks = [
+    steps_per_epoch = train_sample_num // (args.batch_size_per_gpu * get_nr_gpu())
+    # max_epoch = cfg.max_itr // steps_per_epoch
+    stepvalues = (150, 200, 250)
+
+    callbacks = [ # InferenceRunner(ds_test, [CalMAP(cfg.test_list)]),
       ModelSaver(),
-      PeriodicTrigger(InferenceRunner(ds_test,
-                                      ScalarStats(['conf_loss', 'loc_loss', 'loss'])),
-                      every_k_epochs=3),
+      # PeriodicTrigger(InferenceRunner(ds_test,
+      #                                 ScalarStats(['conf_loss', 'loc_loss', 'loss'])),
+      #                 every_k_epochs=3),
+      InferenceRunner(ds_test, ScalarStats(['conf_loss', 'loc_loss', 'loss'])),
       ScheduledHyperParamSetter('learning_rate',
                                 cfg.lr_schedule,
                                 step_based=True),
@@ -319,14 +325,12 @@ def get_config(args, model):
                                                                          [CalMAP(cfg.test_list)]),
                                           every_k_epochs=3),
                          lambda x : x.epoch_num >= 10)),
-
-    steps_per_epoch = cfg.train_sample_num // (args.batch_size_per_gpu * get_nr_gpu())
-    max_epoch = cfg.max_itr // steps_per_epoch
+#         callbacks.append(InferenceRunner(ds_test, [CalMAP(cfg.test_list)])),
 
     return TrainConfig(
         dataflow=ds_train,
         callbacks=callbacks,
         model=model,
         steps_per_epoch=steps_per_epoch,
-        max_epoch=max_epoch,
+        max_epoch=cfg.max_epoch,
     )

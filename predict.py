@@ -24,11 +24,11 @@ from tensorpack.tfutils.sesscreate import SessionCreatorAdapter, NewSessionCreat
 from tensorpack import *
 
 try:
-    from .cfgs.config import cfg
-    from .utils import postprocess
+    from .cfgs.config_voc0712_fssd import cfg
+    from .utils_bak import postprocess
 except Exception:
-    from cfgs.config import cfg
-    from utils import postprocess
+    from cfgs.config_voc0712_fssd import cfg
+    from utils_bak import postprocess
 
 try:
     from .vgg_ssd import VGGSSD

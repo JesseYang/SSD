@@ -51,18 +51,13 @@ def encode_box(gt_box, anchor_box):
     h = np.log(gt_box.h / anchor_box.h) / cfg.prior_scaling[3]
     return np.asarray([cx, cy, w, h])
 
-def decode_box(loc_pred, anchor):
-    # cx, cy, w, h = loc_pred
-    # box_cx = cx * anchor_box.w * cfg.prior_scaling[0] + anchor_box.x
-    # box_cy = cy * anchor_box.h * cfg.prior_scaling[1] + anchor_box.y
-    # box_w = np.exp(w * cfg.prior_scaling[2]) * anchor_box.w
-    # box_h = np.exp(h * cfg.prior_scaling[3]) * anchor_box.h
-    # import pdb
-    # pdb.set_trace() 
-    decoded_loc = np.concatenate((anchor[:, :2] + loc_pred[:, :2] * cfg.prior_scaling[0] * anchor[:, 2:], 
-                                  anchor[:, 2:] * np.exp(loc_pred[:, 2:] * cfg.prior_scaling[2])), 1)
-    return decoded_loc
-    # return Box(box_cx, box_cy, box_w, box_h)
+def decode_box(loc_pred, anchor_box):
+    cx, cy, w, h = loc_pred
+    box_cx = cx * anchor_box.w * cfg.prior_scaling[0] + anchor_box.x
+    box_cy = cy * anchor_box.h * cfg.prior_scaling[1] + anchor_box.y
+    box_w = np.exp(w * cfg.prior_scaling[2]) * anchor_box.w
+    box_h = np.exp(h * cfg.prior_scaling[3]) * anchor_box.h
+    return Box(box_cx, box_cy, box_w, box_h)
 
 def overlap(x1, len1, x2, len2):
     len1_half = len1 / 2
@@ -165,81 +160,59 @@ def postprocess(predictions, image_path=None, image_shape=None, det_th=None):
     width_rate = ori_width / float(cfg.img_w)
     height_rate = ori_height / float(cfg.img_h)
 
-    decoded_loc = decode_box(loc_pred[0], cfg.all_anchors[:, :4])
-    ori_wh = np.array([ori_width, ori_height])
-    # import pdb
-    # pdb.set_trace()
-    xy_min = (decoded_loc[:, :2] - decoded_loc[:, 2:]/2) * ori_wh
-    xy_max = (decoded_loc[:, :2] + decoded_loc[:, 2:]/2) * ori_wh
-    trun_xyxy = np.concatenate((np.maximum(xy_min, np.zeros(xy_min.shape)), np.minimum(xy_max, np.ones(xy_max.shape)*ori_wh)), 1)
     boxes = {}
     # t2 = float(time.time())
     # print("2: %f" % (float(time.time()) - t))
     # print(box_n)
-#     for n in range(box_n):
-#         # t2 = float(time.time())
-# 
-#         selected_klass = np.where(cls_pred[0, n] > (det_th or cfg.det_th))[0].tolist()
-#         # the 0th class in prediction is the background
-#         selected_klass.remove(0) if 0 in selected_klass else None
-#         if len(selected_klass) == 0:
-#             continue
-#         # klass = np.argmax(cls_pred[0, n, 1:]) + 1
-#         # if cls_pred[0, n, klass] < (det_th or cfg.det_th):
-#         #     continue
-# 
-#         # the class index in config file is 0-based
-# #        anchor_box = Box(*cfg.all_anchors[n][:4])
-# #        pred_box = decode_box(loc_pred[0, n], anchor_box)
-# 
-#         # t0 = float(time.time())
-#         # print('2_0: %f' % (t0 - t2))
-# 
-# #         xmin = float(pred_box.x - pred_box.w / 2) * ori_width
-# #         ymin = float(pred_box.y - pred_box.h / 2) * ori_height
-# #         xmax = float(pred_box.x + pred_box.w / 2) * ori_width
-# #         ymax = float(pred_box.y + pred_box.h / 2) * ori_height
-# #         xmin = np.max([xmin, 0])
-# #         ymin = np.max([ymin, 0])
-# #         xmax = np.min([xmax, ori_width])
-# #         ymax = np.min([ymax, ori_height])
-# 
-#         # tx = time.time()
-#         # print('2_1: %f' % (float(tx) - t0))
-# 
-# 
-#         for klass in selected_klass:
-#             box = list(trun_xyxy[n])
-#             klass_name = cfg.classes_name[klass - 1]
-#             if klass_name not in boxes.keys():
-#                 boxes[klass_name] = []
-# 
-# #             box = [xmin, ymin, xmax, ymax, cls_pred[0, n, klass]]
-#             box.append(cls_pred[0, n, klass])
-#             boxes[klass_name].append(box)
-# 
-#         # print('2_2: %f' % (float(time.time()) - tx))
-# 
-#     # t3 = float(time.time())
-#     # print("3: %f" % (float(time.time()) - t2))
-#     # do non-maximum-suppresion
-#     # import pdb
-#     # pdb.set_trace()
-#     for klass_name, k_boxes in boxes.items():
-#         boxes[klass_name] = np.asarray(k_boxes, dtype=np.float32)
-    cls_pred = cls_pred[0]
-    for j in range(1, cfg.class_num + 1):
-        inds = np.where(cls_pred[:, j] > (det_th or cfg.det_th))[0]
-        klass_name = cfg.classes_name[j - 1]
-        if len(inds) == 0:
-            boxes[klass_name] = np.empty([0, 5], dtype=np.float32)
+    for n in range(box_n):
+        # t2 = float(time.time())
+
+        selected_klass = np.where(cls_pred[0, n] > (det_th or cfg.det_th))[0].tolist()
+        # the 0th class in prediction is the background
+        selected_klass.remove(0) if 0 in selected_klass else None
+        if len(selected_klass) == 0:
             continue
+        # klass = np.argmax(cls_pred[0, n, 1:]) + 1
+        # if cls_pred[0, n, klass] < (det_th or cfg.det_th):
+        #     continue
 
-        c_bboxes = trun_xyxy[inds]
-        c_pred = cls_pred[inds,j]
-        c_dets = np.hstack((c_bboxes, c_pred[:, np.newaxis])).astype(np.float32)
-        boxes[klass_name] = c_dets
+        # the class index in config file is 0-based
+        anchor_box = Box(*cfg.all_anchors[n][:4])
+        pred_box = decode_box(loc_pred[0, n], anchor_box)
 
+        # t0 = float(time.time())
+        # print('2_0: %f' % (t0 - t2))
+
+        xmin = float(pred_box.x - pred_box.w / 2) * ori_width
+        ymin = float(pred_box.y - pred_box.h / 2) * ori_height
+        xmax = float(pred_box.x + pred_box.w / 2) * ori_width
+        ymax = float(pred_box.y + pred_box.h / 2) * ori_height
+        xmin = np.max([xmin, 0])
+        ymin = np.max([ymin, 0])
+        xmax = np.min([xmax, ori_width])
+        ymax = np.min([ymax, ori_height])
+
+        # tx = time.time()
+        # print('2_1: %f' % (float(tx) - t0))
+
+        for klass in selected_klass:
+            klass_name = cfg.classes_name[klass - 1]
+            if klass_name not in boxes.keys():
+                boxes[klass_name] = []
+
+            box = [xmin, ymin, xmax, ymax, cls_pred[0, n, klass]]
+
+            boxes[klass_name].append(box)
+
+        # print('2_2: %f' % (float(time.time()) - tx))
+
+    # t3 = float(time.time())
+    # print("3: %f" % (float(time.time()) - t2))
+    # do non-maximum-suppresion
+    # import pdb
+    # pdb.set_trace()
+    for klass_name, k_boxes in boxes.items():
+        boxes[klass_name] = np.asarray(k_boxes, dtype=np.float32)
     nms_boxes = {}
     if cfg.nms == True:
         for klass_name, k_boxes in boxes.items():

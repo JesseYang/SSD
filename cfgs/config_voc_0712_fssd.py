@@ -1,11 +1,19 @@
 from easydict import EasyDict as edict
 import numpy as np
 from .config_utils import *
+# import itertools.product as product
 
 cfg = edict()
 
-cfg.lr_schedule = [(0, 1e-3), (80000, 1e-4), (100000, 1e-5)]
+# cfg.lr_schedule = [(0, 1e-3), (80000, 1e-4), (100000, 1e-5)]
+cfg.lr_schedule = [(0, 1e-3), (1034*150, 1e-4), (1034*200, 1e-5), (1034*250, 1e-6)]
+
+cfg.initial_lr = 1e-3
+cfg.warm_epoch = 1 # max epoch for retraining
+cfg.gamma = 0.1 # Gamma update for momentum SGD
+
 cfg.max_itr = 120000    # 120k
+cfg.max_epoch = 300
 
 cfg.img_size = 300
 cfg.img_w = cfg.img_size
@@ -35,7 +43,7 @@ cfg.anchor_sizes = [[0.1, np.sqrt(0.1 * 0.2)],
                     [0.88, np.sqrt(0.88 * 1.05)]]
 cfg.anchor_sizes = np.asarray(cfg.anchor_sizes) * cfg.img_size
 
-cfg.anchor_ratios = [[2, 0.5],
+cfg.anchor_ratios = [[2, 0.5, 3, 1/3],
                      [2, 0.5, 3, 1/3],
                      [2, 0.5, 3, 1/3],
                      [2, 0.5, 3, 1/3],
@@ -50,6 +58,29 @@ cfg.all_anchors = ssd_anchor_all_layers([cfg.img_size, cfg.img_size],
                                         cfg.anchor_sizes,
                                         cfg.anchor_ratios,
                                         cfg.anchor_steps)
+
+
+'''parameters for all_anchors calculated by itertools method'''
+
+# cfg.feature_maps = [38, 19, 10, 5, 3, 1]
+# cfg.aspect_ratios = [[2], [2, 3], [2, 3], [2, 3], [2], [2]]
+# mean = []
+# for k, f in enumerate(cfg.feature_maps):
+#     for i, j in product(range(f), repeat=2):
+#         f_k = cfg.img_size / cfg.anchor_steps[k]
+#         cx = (j + 0.5) / f_k
+#         cy = (i + 0.5) / f_k
+#         s_k = cfg.anchor_sizes[k, 0] / cfg.img_size
+#         s_k_prime = cfg.anchor_sizes[k, 1] / cfg.img_size
+#         mean += [cx, cy, s_k, s_k]
+#         mean += [cx, cy, s_k_prime, s_k_prime]
+#         for ar in cfg.aspect_ratios:
+#             mean += [cx, cy, s_k * sqrt(ar), s_k / sqrt(ar)]
+#             mean += [cx, cy, s_k /sqrt(ar), s_k * sqrt(ar)]
+# cfg.all_anchors_ = np.array(mean).reshape(-1, 4)
+# np.clip(cfg.all_anchors_, 0, 1, out=cfg.all_anchors_)
+
+'''end'''
 
 cfg.tot_anchor_num = cfg.all_anchors.shape[0]
 
