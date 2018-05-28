@@ -21,7 +21,7 @@ cfg.img_h = cfg.img_size
 
 cfg.n_boxes = 5
 
-cfg.threshold = 0.6
+cfg.threshold = 0.5
 
 cfg.weight_decay = 5e-4
 
@@ -85,7 +85,7 @@ cfg.all_anchors = ssd_anchor_all_layers(cfg.img_size,
 
 cfg.tot_anchor_num = cfg.all_anchors.shape[0]
 
-cfg.prior_scaling = [0.1, 0.1, 0.2, 0.2]
+cfg.prior_scaling = [0.1, 0.2]
 
 cfg.random_crop = True
 cfg.random_expand = True
