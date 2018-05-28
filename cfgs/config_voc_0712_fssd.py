@@ -6,7 +6,7 @@ from .config_utils import *
 cfg = edict()
 
 # cfg.lr_schedule = [(0, 1e-3), (80000, 1e-4), (100000, 1e-5)]
-cfg.lr_schedule = [(0, 1e-3), (1034*150, 1e-4), (1034*200, 1e-5), (1034*250, 1e-6)]
+cfg.lr_schedule = [(0, 1e-3), (2068*150, 1e-4), (2068*200, 1e-5), (2068*250, 1e-6)]
 
 cfg.initial_lr = 1e-3
 cfg.warm_epoch = 1 # max epoch for retraining
@@ -33,7 +33,7 @@ cfg.classes_name =  ["aeroplane", "bicycle", "bird", "boat",
 
 cfg.class_num = len(cfg.classes_name)
 
-cfg.feat_shapes = [(38, 38), (19, 19), (10, 10), (5, 5), (3, 3), (1, 1)]
+cfg.feat_shapes = [38, 19, 10, 5, 3, 1]
 
 cfg.anchor_sizes = [[0.1, np.sqrt(0.1 * 0.2)],
                     [0.2, np.sqrt(0.2 * 0.37)],
@@ -43,21 +43,22 @@ cfg.anchor_sizes = [[0.1, np.sqrt(0.1 * 0.2)],
                     [0.88, np.sqrt(0.88 * 1.05)]]
 cfg.anchor_sizes = np.asarray(cfg.anchor_sizes) * cfg.img_size
 
-cfg.anchor_ratios = [[2, 0.5, 3, 1/3],
-                     [2, 0.5, 3, 1/3],
-                     [2, 0.5, 3, 1/3],
-                     [2, 0.5, 3, 1/3],
-                     [2, 0.5],
-                     [2, 0.5]]
+cfg.anchor_ratios = [[2, 3],
+                     [2, 3],
+                     [2, 3],
+                     [2, 3],
+                     [2],
+                     [2]]
 cfg.anchor_ratios = np.asarray(cfg.anchor_ratios)
 
 cfg.anchor_steps=[8, 16, 32, 64, 100, 300]
 
-cfg.all_anchors = ssd_anchor_all_layers([cfg.img_size, cfg.img_size],
+cfg.all_anchors = ssd_anchor_all_layers(cfg.img_size,
                                         cfg.feat_shapes,
                                         cfg.anchor_sizes,
                                         cfg.anchor_ratios,
                                         cfg.anchor_steps)
+
 
 
 '''parameters for all_anchors calculated by itertools method'''
