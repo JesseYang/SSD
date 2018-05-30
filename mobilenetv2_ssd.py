@@ -68,6 +68,7 @@ class SSDLite(SSDModel):
             expand_channel = t * (out_channel if expand_with_out_channel else in_channel)
             shortcut = l
             l = Conv2D('conv1', l, expand_channel, 1, nl=BNReLU6)
+            # l = Conv2D('conv1', l, expand_channel, 1, nl=BNReLU6) if t > 1 or expand_with_out_channel == True else l
             expansion = l
             l = DepthConv('depthconv', l, expand_channel, 3, stride=stride, nl=BNReLU6)
             l = Conv2D('conv2', l, out_channel, 1, nl=BN)
@@ -78,8 +79,11 @@ class SSDLite(SSDModel):
         with argscope([Conv2D, GlobalAvgPooling, BatchNorm], data_format=self.data_format), \
                 argscope([Conv2D], use_bias=False):
 
-            # 300
+            # image size is 300
+
+            # 150
             l = Conv2D('covn1', image, 32, 3, stride=2, nl=BNReLU)
+
             # 150
             with tf.variable_scope('bottleneck1'):
                 l, _ = bottleneck_v2(l, out_channel=16, t=1, stride=1)
@@ -102,66 +106,43 @@ class SSDLite(SSDModel):
                     with tf.variable_scope('block{}'.format(j)):
                         l, _ = bottleneck_v2(l, out_channel=64, t=6, stride=2 if j == 0 else 1)
             
-            # 20
+            # 19
             with tf.variable_scope('bottleneck5'):
                 for j in range(3):
                     with tf.variable_scope('block{}'.format(j)):
                         l, _ = bottleneck_v2(l, out_channel=96, t=6, stride=1)
-            feat_1 = l
+
             # 10 after depth-conv of first bolck
             with tf.variable_scope('bottleneck6'):
                 for j in range(3):
                     with tf.variable_scope('block{}'.format(j)):
-                        l, _ = bottleneck_v2(l, out_channel=160, t=6, stride=2 if j == 0 else 1)
+                        if j == 0:
+                            l, feat_1 = bottleneck_v2(l, out_channel=160, t=6, stride=2)
+                        else:
+                            l, _ = bottleneck_v2(l, out_channel=160, t=6, stride=1)
 
             # 10
             with tf.variable_scope('bottleneck7'):
                 l, _ = bottleneck_v2(l, out_channel=320, t=6, stride=1)
+
+
+            l = Conv2D('conv2', l, 1280, 1, nl=BNReLU)
             feat_2 = l
 
-            if cfg.freeze_backbone == True:
-                feat_1 = tf.stop_gradient(feat_1)
-                feat_2 = tf.stop_gradient(feat_2)
-
+            def extra_block(l, out_channel):
+                l = Conv2D('conv1', l, out_channel // 2, 1, nl=BNReLU6)
+                l = DepthConv('depthconv', l, out_channel // 2, 3, stride=2, nl=BNReLU6)
+                l = Conv2D('conv2', l, out_channel, 1, nl=BNReLU6)
+                return l
 
             with tf.variable_scope('extra_layers1'):
-                feat_3, _ = bottleneck_v2(feat_2, out_channel=512, t=1, stride=2)
+                feat_3 = extra_block(feat_2, out_channel=512)
             with tf.variable_scope('extra_layers2'):
-                feat_4, _ = bottleneck_v2(feat_3, out_channel=256, t=1, stride=2)
+                feat_4 = extra_block(feat_3, out_channel=256)
             with tf.variable_scope('extra_layers3'):
-                feat_5, _ = bottleneck_v2(feat_4, out_channel=256, t=1, stride=2)
+                feat_5 = extra_block(feat_4, out_channel=256)
             with tf.variable_scope('extra_layers4'):
-                feat_6, _ = bottleneck_v2(feat_5, out_channel=128, t=1, stride=2)
-
-            '''
-            # feat_2 = Conv2D('conv2', l, 1280, 1, nl=BNReLU)
-            feat_2 = Conv2D('extra_conv1_1', l, 256, 1, nl=BNReLU)
-
-            # the extra layers
-            # 5
-            feat_3 = (LinearWrap(feat_2)
-                     # .Conv2D('extra_conv1_1', 256, 1)
-                     .DepthConv('extra_conv1_2', 256, 3, stride=2)
-                     .Conv2D('extra_conv1_3', 512, 1)())
-
-            # 3
-            feat_4 = (LinearWrap(feat_3)
-                     .Conv2D('extra_conv2_1', 128, 1)
-                     .DepthConv('extra_conv2_2', 128, 3, stride=2)
-                     .Conv2D('extra_conv2_3', 256, 1)())
-
-            # 2
-            feat_5 = (LinearWrap(feat_4)
-                     .Conv2D('extra_conv3_1', 128, 1)
-                     .DepthConv('extra_conv3_2', 128, 3, stride=2)
-                     .Conv2D('extra_conv3_3', 256, 1)())
-
-            # 1
-            feat_6 = (LinearWrap(feat_5)
-                     .Conv2D('extra_conv4_1', 128, 1)
-                     .DepthConv('extra_conv4_2', 128, 3, stride=2)
-                     .Conv2D('extra_conv4_3', 256, 1)())
-            '''
+                feat_6 = extra_block(feat_5, out_channel=128)
 
         features = [feat_1, feat_2, feat_3, feat_4, feat_5, feat_6]
         return features
