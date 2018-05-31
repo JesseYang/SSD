@@ -45,6 +45,26 @@ def encode(gt_box):
     # return target for smooth_l1_loss
     return np.concatenate([g_cxcy, g_wh], 1)  # [num_priors,4]
 
+def decode(loc):
+    """Decode locations from predictions using priors to undo
+    the encoding we did for offset regression at train time.
+    Args:
+        loc (tensor): location predictions for loc layers,
+            Shape: [num_priors,4]
+        priors (tensor): Prior boxes in center-offset form.
+            Shape: [num_priors,4].
+        variances: (list[float]) Variances of priorboxes
+    Return:
+        decoded bounding box predictions
+    """
+
+    boxes = np.concatenate([
+        cfg.all_anchors[:, :2] + loc[:, :2] * cfg.prior_scaling[0] * cfg.all_anchors[:, 2:],
+        cfg.all_anchors[:, 2:] * np.exp(loc[:, 2:] * cfg.prior_scaling[1])], 1)
+    boxes[:, :2] -= boxes[:, 2:] / 2
+    boxes[:, 2:] += boxes[:, :2]
+    return boxes
+
 def point_form(boxes):
     """ Convert prior_boxes to (xmin, ymin, xmax, ymax)
     representation for comparison to point form ground truth data.
@@ -283,9 +303,10 @@ class Data(RNGDataFlow):
                     boxes = ori_boxes
                 box_num = boxes.shape[0]
                 s = image.shape
-                h, w, _ = image.shape
+        h, w, _ = image.shape
 
-
+        boxes[:,0::2] = boxes[:,0::2] / w
+        boxes[:,1::2] = boxes[:,1::2] / h
 
         img_with_box = np.copy(image) if self.save_img else None
         if self.random_inter:
