@@ -46,7 +46,7 @@ class SSDModel(ModelDesc):
         anchor_sizes = cfg.anchor_sizes[feature_idx]
         anchor_ratios = cfg.anchor_ratios[feature_idx]
 
-        anchor_num = len(anchor_sizes) + len(anchor_ratios)
+        anchor_num = len(anchor_sizes) + len(anchor_ratios) * 2 
 
         if self.data_format == 'NCHW':
             h = int(feature.get_shape()[2])
@@ -129,59 +129,97 @@ class SSDModel(ModelDesc):
         predictions = tf.nn.softmax(cls_pred, name='cls_pred')
 
         # the loss part of SSD
-        nr_pos = tf.stop_gradient(tf.count_nonzero(conf_label, dtype=tf.int32))
-        nr_pos = tf.identity(nr_pos, name='nr_pos')
-        # location loss, the last class is the background class
         pos_mask = tf.stop_gradient(tf.not_equal(conf_label, 0))
-        # neg_mask = tf.stop_gradient(tf.equal(conf_label, 0))
         loc_mask_label = tf.boolean_mask(loc_label, pos_mask)
         loc_mask_label = tf.identity(loc_mask_label, name='loc_mask_label')
         loc_mask_pred = tf.boolean_mask(loc_pred, pos_mask)
         loc_mask_pred = tf.identity(loc_mask_pred, name='loc_mask_pred')
         loc_loss = tf.losses.huber_loss(loc_mask_label, loc_mask_pred, reduction=tf.losses.Reduction.SUM)
-        loc_loss = tf.identity(loc_loss, 'tot_loc_loss')
         # confidence loss
         if cfg.hard_sample_mining:
+            batch_conf = tf.reshape(cls_pred, [-1, cfg.class_num + 1])
+            conf_label_ = tf.reshape(conf_label, [-1])
+            conf_label_max = tf.reduce_max(batch_conf)
+            log_sum_exp = tf.log(tf.reduce_sum(tf.exp(batch_conf - conf_label_max), axis=1, keep_dims=True)) + conf_label_max
+            label_idx = tf.stack([tf.range(0, tf.shape(batch_conf)[0]), conf_label_], axis=1)
 
-            dtype = cls_pred.dtype
-            fpmask = tf.cast(pos_mask, dtype)
-            fnmask = tf.cast(neg_mask, dtype)
-            no_classes = tf.cast(pos_mask, tf.int32)
+            # import pdb
+            # pdb.set_trace()
+            batch_conf_gathered = tf.reshape(tf.gather_nd(batch_conf, label_idx), [-1, 1])
+            loss_c = log_sum_exp - batch_conf_gathered
+            loss_c = tf.reshape(loss_c, [self.batch_size, -1])
+            loss_c = tf.where(pos_mask, tf.zeros_like(loss_c), loss_c)
+            _, loss_idx = tf.nn.top_k(loss_c, k=loss_c.get_shape()[-1])
+            _, idx_rank = tf.nn.top_k(-loss_idx, k = loss_c.get_shape()[-1])
+            num_pos = tf.reduce_sum(tf.cast(pos_mask, tf.int32), axis=1, keep_dims=True)
+            num_neg = tf.cast(cfg.neg_ratio * num_pos, tf.int32)
+            num_neg = tf.minimum(num_neg, cfg.tot_anchor_num - 1)
+            neg_mask = idx_rank < num_neg
+            mask = (tf.cast(pos_mask, tf.int32) + tf.cast(neg_mask, tf.int32)) > 0
+            conf_p = tf.reshape(tf.boolean_mask(cls_pred, mask), [-1, cfg.class_num+1])
+            targets_weighted = tf.boolean_mask(conf_label, mask)
+            targets_weighted = tf.one_hot(targets_weighted, cfg.class_num+1)
+            conf_loss = tf.losses.softmax_cross_entropy(targets_weighted, conf_p)
 
-            neg_predictions = tf.where(neg_mask,
-                                       predictions[:, :, 0],
-                                       1. - fnmask)
+        N = tf.cast(tf.reduce_sum(num_pos), tf.float32)
+        loc_loss = loc_loss / N
+        loc_loss = tf.identity(loc_loss, 'loc_loss')
+        conf_loss = conf_loss / N
+        conf_loss = tf.identity(conf_loss, 'conf_loss')
 
-            neg_pred_flat = tf.reshape(neg_predictions, [-1])
-
-            max_neg_entries = tf.cast(tf.reduce_sum(fnmask), tf.int32)
-            nr_neg = tf.cast(cfg.neg_ratio * nr_pos, tf.int32) + self.batch_size
-            nr_neg = tf.minimum(nr_neg, max_neg_entries)
-
-            val, idxes = tf.nn.top_k(-neg_pred_flat, k=nr_neg)
-            max_hard_pred = -val[-1]
-            neg_mask = tf.logical_and(neg_mask, neg_predictions <= max_hard_pred)
-            fnmask = tf.cast(neg_mask, dtype)
-
-            pos_conf_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_pred, labels=conf_label)
-            pos_conf_loss = tf.reduce_sum(pos_conf_loss * fpmask, name='pos_conf_loss')
-
-            neg_conf_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_pred, labels=no_classes)
-            neg_conf_loss = tf.reduce_sum(neg_conf_loss * fnmask, name='neg_conf_loss')
-
-            conf_loss = pos_conf_loss + neg_conf_loss
-            # add_moving_summary(pos_conf_loss, neg_conf_loss)
-        else:
-            conf_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_pred, labels=conf_label))
-        # cost with weight decay
+#         nr_pos = tf.stop_gradient(tf.count_nonzero(conf_label, dtype=tf.int32))
+#         nr_pos = tf.identity(nr_pos, name='nr_pos')
+#         # location loss, the last class is the background class
+#         pos_mask = tf.stop_gradient(tf.not_equal(conf_label, 0))
+#         # neg_mask = tf.stop_gradient(tf.equal(conf_label, 0))
+#         loc_mask_label = tf.boolean_mask(loc_label, pos_mask)
+#         loc_mask_label = tf.identity(loc_mask_label, name='loc_mask_label')
+#         loc_mask_pred = tf.boolean_mask(loc_pred, pos_mask)
+#         loc_mask_pred = tf.identity(loc_mask_pred, name='loc_mask_pred')
+#         loc_loss = tf.losses.huber_loss(loc_mask_label, loc_mask_pred, reduction=tf.losses.Reduction.SUM)
+#         loc_loss = tf.identity(loc_loss, 'tot_loc_loss')
+#         # confidence loss
+#         if cfg.hard_sample_mining:
+# 
+#             dtype = cls_pred.dtype
+#             fpmask = tf.cast(pos_mask, dtype)
+#             fnmask = tf.cast(neg_mask, dtype)
+#             no_classes = tf.cast(pos_mask, tf.int32)
+# 
+#             neg_predictions = tf.where(neg_mask,
+#                                        predictions[:, :, 0],
+#                                        1. - fnmask)
+# 
+#             neg_pred_flat = tf.reshape(neg_predictions, [-1])
+# 
+#             max_neg_entries = tf.cast(tf.reduce_sum(fnmask), tf.int32)
+#             nr_neg = tf.cast(cfg.neg_ratio * nr_pos, tf.int32) + self.batch_size
+#             nr_neg = tf.minimum(nr_neg, max_neg_entries)
+# 
+#             val, idxes = tf.nn.top_k(-neg_pred_flat, k=nr_neg)
+#             max_hard_pred = -val[-1]
+#             neg_mask = tf.logical_and(neg_mask, neg_predictions <= max_hard_pred)
+#             fnmask = tf.cast(neg_mask, dtype)
+# 
+#             pos_conf_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_pred, labels=conf_label)
+#             pos_conf_loss = tf.reduce_sum(pos_conf_loss * fpmask, name='pos_conf_loss')
+# 
+#             neg_conf_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_pred, labels=no_classes)
+#             neg_conf_loss = tf.reduce_sum(neg_conf_loss * fnmask, name='neg_conf_loss')
+# 
+#             conf_loss = pos_conf_loss + neg_conf_loss
+#             # add_moving_summary(pos_conf_loss, neg_conf_loss)
+#         else:
+#             conf_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_pred, labels=conf_label))
+#         # cost with weight decay
         if cfg.weight_decay > 0:
             wd_cost = regularize_cost('.*/W', l2_regularizer(cfg.weight_decay), name='l2_regularize_loss')
         else:
             wd_cost = tf.constant(0.0)
-        loc_loss = tf.truediv(loc_loss, tf.to_float(nr_pos), name='loc_loss')
-        conf_loss = tf.truediv(conf_loss, tf.to_float(nr_pos), name='conf_loss')
-        # loc_loss = tf.truediv(loc_loss, tf.to_float(self.batch_size), name='loc_loss')
-        # conf_loss = tf.truediv(conf_loss, tf.to_float(self.batch_size), name='conf_loss')
+#         loc_loss = tf.truediv(loc_loss, tf.to_float(nr_pos), name='loc_loss')
+#         conf_loss = tf.truediv(conf_loss, tf.to_float(nr_pos), name='conf_loss')
+#         # loc_loss = tf.truediv(loc_loss, tf.to_float(self.batch_size), name='loc_loss')
+#         # conf_loss = tf.truediv(conf_loss, tf.to_float(self.batch_size), name='conf_loss')
 
         loss = tf.add_n([loc_loss * cfg.alpha, conf_loss], name='loss')
         add_moving_summary(loc_loss, conf_loss, loss, wd_cost)
