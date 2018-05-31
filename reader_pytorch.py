@@ -200,10 +200,10 @@ class Data(RNGDataFlow):
         anchor_neg_mask = best_truth_overlap < cfg.neg_iou_th
 
         # gt_box_coord should be the format of (ymin, xmin, ymax, xmax)
-        if box_num >= cfg.tot_anchor_num:
-            gt_box_coord = boxes[:cfg.tot_anchor_num][:,np.asarray([1, 0, 3, 2])]
+        if box_num >= cfg.max_gt_box_shown:
+            gt_box_coord = boxes[:cfg.max_gt_box_shown][:,np.asarray([1, 0, 3, 2])]
         else:
-            gt_box_coord = np.zeros((cfg.tot_anchor_num, 4))
+            gt_box_coord = np.zeros((cfg.max_gt_box_shown, 4))
             gt_box_coord[:box_num] = boxes[:,np.asarray([1, 0, 3, 2])]
 
 
