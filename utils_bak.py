@@ -46,9 +46,9 @@ class Box():
 
 def encode_box(gt_box, anchor_box):
     cx = (gt_box.x - anchor_box.x) / anchor_box.w / cfg.prior_scaling[0]
-    cy = (gt_box.y - anchor_box.y) / anchor_box.h / cfg.prior_scaling[1]
-    w = np.log(gt_box.w / anchor_box.w) / cfg.prior_scaling[2]
-    h = np.log(gt_box.h / anchor_box.h) / cfg.prior_scaling[3]
+    cy = (gt_box.y - anchor_box.y) / anchor_box.h / cfg.prior_scaling[0]
+    w = np.log(gt_box.w / anchor_box.w) / cfg.prior_scaling[1]
+    h = np.log(gt_box.h / anchor_box.h) / cfg.prior_scaling[1]
     return np.asarray([cx, cy, w, h])
 
 def decode_box(loc_pred, anchor):
@@ -60,7 +60,7 @@ def decode_box(loc_pred, anchor):
     # import pdb
     # pdb.set_trace() 
     decoded_loc = np.concatenate((anchor[:, :2] + loc_pred[:, :2] * cfg.prior_scaling[0] * anchor[:, 2:], 
-                                  anchor[:, 2:] * np.exp(loc_pred[:, 2:] * cfg.prior_scaling[2])), 1)
+                                  anchor[:, 2:] * np.exp(loc_pred[:, 2:] * cfg.prior_scaling[1])), 1)
     return decoded_loc
     # return Box(box_cx, box_cy, box_w, box_h)
 

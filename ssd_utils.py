@@ -142,9 +142,6 @@ class SSDModel(ModelDesc):
             conf_label_max = tf.reduce_max(batch_conf)
             log_sum_exp = tf.log(tf.reduce_sum(tf.exp(batch_conf - conf_label_max), axis=1, keep_dims=True)) + conf_label_max
             label_idx = tf.stack([tf.range(0, tf.shape(batch_conf)[0]), conf_label_], axis=1)
-
-            # import pdb
-            # pdb.set_trace()
             batch_conf_gathered = tf.reshape(tf.gather_nd(batch_conf, label_idx), [-1, 1])
             loss_c = log_sum_exp - batch_conf_gathered
             loss_c = tf.reshape(loss_c, [self.batch_size, -1])
