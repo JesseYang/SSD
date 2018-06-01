@@ -1,16 +1,22 @@
 import os, sys, shutil
+import math
 import time
 import pickle
 import numpy as np
 import random
 from scipy import misc
 import six
+import random
 from six.moves import urllib, range
 import copy
 import logging
 import cv2
 import json
 import uuid
+
+from data import VOCroot, COCOroot, VOC_300, VOC_512, COCO_300, COCO_512, COCO_mobile_300, AnnotationTransform, \
+    COCODetection, VOCDetection, detection_collate, BaseTransform, preproc
+
 try:
     from .cfgs.config import cfg
     from .utils_bak import Box, box_iou, encode_box
@@ -21,6 +27,7 @@ except Exception:
 from tensorpack import *
 
 SAVE_DIR = 'input_images'
+
 
 def encode(gt_box):
     """Encode the variances from the priorbox layers into the ground truth boxes
@@ -92,16 +99,17 @@ def intersect(box_a, box_b):
     inter = np.clip((max_xy - min_xy), a_min=0, a_max=np.inf)
     return inter[:, :, 0] * inter[:, :, 1]
 
+
 def jaccard_numpy(box_a, box_b):
     """Compute the jaccard overlap of two sets of boxes.  The jaccard overlap
     is simply the intersection over union of two boxes.
     E.g.:
         A ∩ B / A ∪ B = A ∩ B / (area(A) + area(B) - A ∩ B)
     Args:
-        box_a: Multiple bounding boxes, Shape: [num_boxes,4]
-        box_b: Single bounding box, Shape: [4]
+        box_a: Multiple bounding boxes, Shape: [num_boxes_1, 4]
+        box_b: Multiple bounding boxes, Shape: [num_boxes_2, 4]
     Return:
-        jaccard overlap: Shape: [box_a.shape[0], box_a.shape[1]]
+        jaccard overlap: Shape: [box_a.shape[0], box_b.shape[0]]
     """
     num_a = box_a.shape[0]
     num_b = box_b.shape[0]
@@ -117,10 +125,8 @@ def jaccard_numpy(box_a, box_b):
     union = area_a + area_b - inter
     return inter / union
 
-
-
 class Data(RNGDataFlow):
-    def __init__(self, filename_list, shuffle, flip, random_crop, random_expand, random_inter, save_img=False):
+    def __init__(self, filename_list, shuffle, flip, random_crop, random_expand, random_inter, random_distort, save_img=False):
         self.filename_list = filename_list
         self.save_img = save_img
 
@@ -147,168 +153,196 @@ class Data(RNGDataFlow):
         self.random_crop = random_crop
         self.random_expand = random_expand
         self.random_inter = random_inter
+        self.random_distort = random_distort
 
     def size(self):
         return len(self.imglist)
 
+    def _crop(self, image, boxes, labels):
+        height, width, _ = image.shape
+    
+        def matrix_iou(a, b):
+            """
+            return iou of a and b, numpy version for data augenmentation
+            """
+            lt = np.maximum(a[:, np.newaxis, :2], b[:, :2])
+            rb = np.minimum(a[:, np.newaxis, 2:], b[:, 2:])
+        
+            area_i = np.prod(rb - lt, axis=2) * (lt < rb).all(axis=2)
+            area_a = np.prod(a[:, 2:] - a[:, :2], axis=1)
+            area_b = np.prod(b[:, 2:] - b[:, :2], axis=1)
+            return area_i / (area_a[:, np.newaxis] + area_b - area_i)
+
+        if len(boxes) == 0:
+            return image, boxes, labels
+    
+        while True:
+            mode = random.choice((
+                None,
+                (0.1, None),
+                (0.3, None),
+                (0.5, None),
+                (0.7, None),
+                (0.9, None),
+                (None, None),
+            ))
+    
+            if mode is None:
+                return image, boxes, labels
+    
+            min_iou, max_iou = mode
+            if min_iou is None:
+                min_iou = float('-inf')
+            if max_iou is None:
+                max_iou = float('inf')
+    
+            for _ in range(50):
+                scale = random.uniform(0.3, 1.)
+                min_ratio = max(0.5, scale * scale)
+                max_ratio = min(2, 1. / scale / scale)
+                ratio = math.sqrt(random.uniform(min_ratio, max_ratio))
+                w = int(scale * ratio * width)
+                h = int((scale / ratio) * height)
+    
+                l = random.randrange(width - w)
+                t = random.randrange(height - h)
+                roi = np.array((l, t, l + w, t + h))
+    
+                iou = matrix_iou(boxes, roi[np.newaxis])
+    
+                if not (min_iou <= iou.min() and iou.max() <= max_iou):
+                    continue
+    
+                image_t = image[roi[1]:roi[3], roi[0]:roi[2]]
+    
+                centers = (boxes[:, :2] + boxes[:, 2:]) / 2
+                mask = np.logical_and(roi[:2] < centers, centers < roi[2:]) \
+                    .all(axis=1)
+                boxes_t = boxes[mask].copy()
+                labels_t = labels[mask].copy()
+                if len(boxes_t) == 0:
+                    continue
+    
+                boxes_t[:, :2] = np.maximum(boxes_t[:, :2], roi[:2])
+                boxes_t[:, :2] -= roi[:2]
+                boxes_t[:, 2:] = np.minimum(boxes_t[:, 2:], roi[2:])
+                boxes_t[:, 2:] -= roi[:2]
+    
+                return image_t, boxes_t, labels_t
+
+        return image, boxes, labels
+
+
+    def _distort(self, image):
+        def _convert(image, alpha=1, beta=0):
+            tmp = image.astype(float) * alpha + beta
+            tmp[tmp < 0] = 0
+            tmp[tmp > 255] = 255
+            image[:] = tmp
+    
+        image = image.copy()
+    
+        if random.randrange(2):
+            _convert(image, beta=random.uniform(-32, 32))
+    
+        if random.randrange(2):
+            _convert(image, alpha=random.uniform(0.5, 1.5))
+    
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    
+        if random.randrange(2):
+            tmp = image[:, :, 0].astype(int) + random.randint(-18, 18)
+            tmp %= 180
+            image[:, :, 0] = tmp
+    
+        if random.randrange(2):
+            _convert(image[:, :, 1], alpha=random.uniform(0.5, 1.5))
+    
+        image = cv2.cvtColor(image, cv2.COLOR_HSV2BGR)
+    
+        return image
+
+    def _expand(self, image, boxes, fill=(104, 117, 123), p=0.6):
+        if random.random() > p:
+            return image, boxes
+    
+        height, width, depth = image.shape
+        for _ in range(50):
+            scale = random.uniform(1, 4)
+    
+            min_ratio = max(0.5, 1. / scale / scale)
+            max_ratio = min(2, scale * scale)
+            ratio = math.sqrt(random.uniform(min_ratio, max_ratio))
+            ws = scale * ratio
+            hs = scale / ratio
+            if ws < 1 or hs < 1:
+                continue
+            w = int(ws * width)
+            h = int(hs * height)
+    
+            left = random.randint(0, w - width)
+            top = random.randint(0, h - height)
+    
+            boxes_t = boxes.copy()
+            boxes_t[:, :2] += (left, top)
+            boxes_t[:, 2:] += (left, top)
+    
+            expand_image = np.empty(
+                (h, w, depth),
+                dtype=image.dtype)
+            expand_image[:, :] = fill
+            expand_image[top:top + height, left:left + width] = image
+            image = expand_image
+    
+            return image, boxes_t
+
+    def _mirror(self, image, boxes):
+        _, width, _ = image.shape
+        if random.randrange(2):
+            image = image[:, ::-1]
+            boxes = boxes.copy()
+            boxes[:, 0::2] = width - boxes[:, 2::-2]
+        return image, boxes
+
     def generate_sample(self, idx, image_height, image_width):
-        hflip = False if self.flip == False else (random.random() > 0.5)
+
         line = self.imglist[idx]
 
         record = line.split(' ')
-        record[1:] = [float(num) for num in record[1:]]
+        anno = [float(num) for num in record[1:]]
 
         image = cv2.imread(record[0])
-        s = image.shape
-        h, w, c = image.shape
-        # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-        box_num = (len(record) - 1) // 5
+        # extract annotation information
+        box_num = len(anno) // 5
         boxes = np.zeros((box_num, 4))
-        class_ary = np.zeros((box_num)).astype(int)
-        box_idx = 0
-        i = 1
-        while i < len(record):
-            # for each ground truth box
+        labels = np.zeros((box_num)).astype(int)
+        for box_idx in range(box_num):
             for coord_idx in range(4):
-                boxes[box_idx, coord_idx] = record[i + coord_idx]
-            class_ary[box_idx] = int(record[i + 4])
+                boxes[box_idx, coord_idx] = anno[box_idx * 5 + coord_idx]
+            labels[box_idx] = int(anno[box_idx * 5 + 4])
             box_idx += 1
-            i += 5
 
-        ori_img_with_box = image.copy()
-        if self.save_img:
-            for box_idx in range(box_num):
-                cv2.rectangle(ori_img_with_box,
-                              (int(boxes[box_idx, 0]), int(boxes[box_idx, 1])),
-                              (int(boxes[box_idx, 2]), int(boxes[box_idx, 3])),
-                              self.colors[class_ary[box_idx] % len(self.colors)],
-                              3)
-            cv2.imwrite(os.path.join(SAVE_DIR, "%d_with_box.jpg" % idx), ori_img_with_box)
-
-        if hflip:
-            image = cv2.flip(image, flipCode=1)
-            boxes = boxes.copy()
-            boxes[:, 0::2] = w - boxes[:, 2::-2]
-
-        ori_image = image.copy()
-        ori_boxes = boxes.copy()
-
-        expand = 0
         if self.random_crop:
-            # expand img
-            expand = np.random.randint(2) if self.random_expand else 0
-            if expand == 1:
-                ratio = np.random.uniform(1, 4)
-                left = np.random.uniform(0, w * ratio - w)
-                top = np.random.uniform(0, h * ratio - h)
-                expand_image = np.zeros(
-                    (int(h * ratio), int(w * ratio), c),
-                    dtype=image.dtype)
+            image, boxes, labels = self._crop(image, boxes, labels)
 
-                img_mean = np.asarray([104, 117, 123])
-                expand_image[:, :, :] = img_mean
-                expand_image[int(top):int(top + h),
-                             int(left):int(left + w)] = image
-                image = expand_image
-                s = image.shape
-                h, w, _ = image.shape
+        if self.random_distort:
+            image = self._distort(image)
 
-                boxes = boxes.copy()
-                boxes[:, :2] += (int(left), int(top))
-                boxes[:, 2:] += (int(left), int(top))
+        if self.random_expand:
+            image, boxes = self._expand(image, boxes)
 
-            sample_options = [
-                None,   # use entire original input image
-                [0.1, 1.0],
-                [0.3, 1.0],
-                [0.5, 1.0],
-                [0.7, 1.0],
-                [0.9, 1.0],
-                [0.0, 1.0]]
-            mode_idx = np.random.randint(len(sample_options))
-            mode = sample_options[mode_idx]
-            crop = False
-            if mode != None:
-                min_iou, max_iou = mode
-                for _ in range(50):
-                    current_image = image
+        if self.flip == True:
+            image, boxes = self._mirror(image, boxes)
 
-                    scale = np.random.uniform(0.3, 1.0)
-                    aspect_ratio = np.random.uniform(0.5, 2.0)
 
-                    aspect_ratio = np.maximum(aspect_ratio, scale ** 2)
-                    aspect_ratio = np.minimum(aspect_ratio, 1 / scale ** 2)
+        box_num = boxes.shape[0]
 
-                    crop_w = scale * np.sqrt(aspect_ratio) * w
-                    crop_h = scale / np.sqrt(aspect_ratio) * h
-
-                    left = np.random.uniform(w - crop_w)
-                    top = np.random.uniform(h - crop_h)
-
-                    rect = np.array([int(left), int(top), int(left + crop_w), int(top + crop_h)])
-
-                    overlap = jaccard_numpy(boxes, rect)
-
-                    satisfy = (overlap > min_iou) * (overlap < max_iou)
-
-                    # is min and max overlap constraint satisfied? if not try again
-                    if not satisfy.any():
-                        continue
-
-                    current_image = current_image[rect[1]:rect[3], rect[0]:rect[2], :]
-
-                    # keep overlap with gt box IF center in sampled patch
-                    centers = (boxes[:, :2] + boxes[:, 2:]) / 2.0
-
-                    # mask in all gt boxes that above and to the left of centers
-                    m1 = (rect[0] < centers[:, 0]) * (rect[1] < centers[:, 1])
-
-                    # mask in all gt boxes that under and to the right of centers
-                    m2 = (rect[2] > centers[:, 0]) * (rect[3] > centers[:, 1])
-
-                    # mask in that both m1 and m2 are true
-                    mask = m1 * m2
-
-                    # have any valid boxes? try again if not
-                    if not mask.any():
-                        continue
-
-                    # take only matching gt boxes
-                    current_boxes = boxes[mask, :].copy()
-
-                    # take only matching gt labels
-                    current_class_ary = class_ary[mask]
-
-                    # should we use the box left and top corner or the crop's
-                    current_boxes[:, :2] = np.maximum(current_boxes[:, :2],
-                                                      rect[:2])
-                    # adjust to crop (by substracting crop's left,top)
-                    current_boxes[:, :2] -= rect[:2]
-
-                    current_boxes[:, 2:] = np.minimum(current_boxes[:, 2:],
-                                                      rect[2:])
-                    # adjust to crop (by substracting crop's left,top)
-                    current_boxes[:, 2:] -= rect[:2]
-
-                    crop = True
-                    break
-
-                if crop == True:
-                    image = current_image
-                    boxes = current_boxes
-                    class_ary = current_class_ary
-                else:
-                    image = ori_image
-                    boxes = ori_boxes
-                box_num = boxes.shape[0]
-                s = image.shape
         h, w, _ = image.shape
 
         boxes[:,0::2] = boxes[:,0::2] / w
         boxes[:,1::2] = boxes[:,1::2] / h
 
-        img_with_box = np.copy(image) if self.save_img else None
         if self.random_inter:
             inter_modes = [cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4]
             inter_mode_idx = np.random.randint(5)
@@ -317,12 +351,12 @@ class Data(RNGDataFlow):
             image = cv2.resize(image, (image_width, image_height))
 
         # only three variables are used in the following code:
-        # img: 300 x 300 x 3 numpy array
+        # image: 300 x 300 x 3 numpy array
         # boxes: N x 4 numpy array, N is boxes number, coordinates for each box
-        # class_ary: N numpy array, N is boxes number, class for each box
-        # these variables can be generated by the pytorch version dataset, and the data part can be switched to pytorch version
-        anchor_loc = np.zeros((cfg.tot_anchor_num, 4))
+        # labels: N numpy array, N is boxes number, class for each box
+
         anchor_cls = np.zeros((cfg.tot_anchor_num, )).astype(int)
+        anchor_loc = np.zeros((cfg.tot_anchor_num, 4))
 
         ious = jaccard_numpy(boxes, point_form(cfg.all_anchors))
 
@@ -341,7 +375,7 @@ class Data(RNGDataFlow):
         for j in range(box_num):
             best_truth_idx[best_prior_idx[j]] = j
 
-        anchor_cls = class_ary[best_truth_idx]
+        anchor_cls = labels[best_truth_idx]
         anchor_cls[best_truth_overlap < cfg.threshold] = 0
 
         anchor_loc = boxes[best_truth_idx]
@@ -356,10 +390,8 @@ class Data(RNGDataFlow):
             gt_box_coord = np.zeros((cfg.max_gt_box_shown, 4))
             gt_box_coord[:box_num] = boxes[:,np.asarray([1, 0, 3, 2])]
 
-        if self.save_img:
-            cv2.imwrite(os.path.join(SAVE_DIR, "%d_with_box_aug_%d_%d_%d.jpg" % (idx, expand, mode_idx, int(crop))), img_with_box)
 
-        return [image, gt_box_coord, anchor_cls, anchor_neg_mask, anchor_loc, np.asarray([300,300, 3])]
+        return [image, gt_box_coord, anchor_cls, anchor_neg_mask, anchor_loc, np.asarray([cfg.img_h, cfg.img_w, 3])]
 
     def get_data(self):
         idxs = np.arange(len(self.imglist))
@@ -430,7 +462,8 @@ def generate_gt_result(test_path, gt_dir="result_gt", overwrite=True):
 
 if __name__ == '__main__':
     # df = Data('voc_2007_train.txt', shuffle=False, flip=False, affine_trans=False)
-    df = Data('temp.txt', shuffle=True, flip=True, random_crop=True, random_expand=True, random_inter=True, save_img=True)
+    train_list = ["voc_2007_train.txt", "voc_2012_train.txt", "voc_2007_val.txt", "voc_2012_val.txt"]
+    df = Data(train_list, shuffle=True, flip=True, random_crop=True, random_expand=True, random_inter=True, random_distort=True, save_img=True)
     df.reset_state()
 
     g = df.get_data()

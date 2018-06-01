@@ -25,15 +25,15 @@ from tensorflow.python import debug as tf_debug
 
 try:
     from .cfgs.config import cfg
-    from .reader import Data as DataTest
     from .evaluate import do_python_eval
     from .utils_bak import postprocess
+    from .reader import Data as DataTest
     from .reader_pytorch import Data, generate_gt_result
 except Exception:
     from cfgs.config import cfg
-    from reader import Data as DataTest
     from evaluate import do_python_eval
     from utils_bak import postprocess
+    from reader import Data as DataTest
     from reader_pytorch import Data, generate_gt_result
 
 class SSDModel(ModelDesc):
@@ -128,6 +128,7 @@ class SSDModel(ModelDesc):
         cls_pred = tf.concat(cls_pred_list, axis=1)
         predictions = tf.nn.softmax(cls_pred, name='cls_pred')
 
+        '''
         # the loss part of SSD
         pos_mask = tf.stop_gradient(tf.not_equal(conf_label, 0))
         loc_mask_label = tf.boolean_mask(loc_label, pos_mask)
@@ -155,68 +156,74 @@ class SSDModel(ModelDesc):
             mask = (tf.cast(pos_mask, tf.int32) + tf.cast(neg_mask, tf.int32)) > 0
             conf_p = tf.reshape(tf.boolean_mask(cls_pred, mask), [-1, cfg.class_num+1])
             targets_weighted = tf.boolean_mask(conf_label, mask)
-            targets_weighted = tf.one_hot(targets_weighted, cfg.class_num+1)
-            conf_loss = tf.losses.softmax_cross_entropy(targets_weighted, conf_p)
+            # targets_weighted = tf.one_hot(targets_weighted, cfg.class_num+1)
+            # conf_loss = tf.losses.softmax_cross_entropy(targets_weighted, conf_p)
+            conf_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=targets_weighted, logits=conf_p))
 
         N = tf.cast(tf.reduce_sum(num_pos), tf.float32)
         loc_loss = loc_loss / N
         loc_loss = tf.identity(loc_loss, 'loc_loss')
         conf_loss = conf_loss / N
         conf_loss = tf.identity(conf_loss, 'conf_loss')
+        '''
 
-#         nr_pos = tf.stop_gradient(tf.count_nonzero(conf_label, dtype=tf.int32))
-#         nr_pos = tf.identity(nr_pos, name='nr_pos')
-#         # location loss, the last class is the background class
-#         pos_mask = tf.stop_gradient(tf.not_equal(conf_label, 0))
-#         # neg_mask = tf.stop_gradient(tf.equal(conf_label, 0))
-#         loc_mask_label = tf.boolean_mask(loc_label, pos_mask)
-#         loc_mask_label = tf.identity(loc_mask_label, name='loc_mask_label')
-#         loc_mask_pred = tf.boolean_mask(loc_pred, pos_mask)
-#         loc_mask_pred = tf.identity(loc_mask_pred, name='loc_mask_pred')
-#         loc_loss = tf.losses.huber_loss(loc_mask_label, loc_mask_pred, reduction=tf.losses.Reduction.SUM)
-#         loc_loss = tf.identity(loc_loss, 'tot_loc_loss')
-#         # confidence loss
-#         if cfg.hard_sample_mining:
-# 
-#             dtype = cls_pred.dtype
-#             fpmask = tf.cast(pos_mask, dtype)
-#             fnmask = tf.cast(neg_mask, dtype)
-#             no_classes = tf.cast(pos_mask, tf.int32)
-# 
-#             neg_predictions = tf.where(neg_mask,
-#                                        predictions[:, :, 0],
-#                                        1. - fnmask)
-# 
-#             neg_pred_flat = tf.reshape(neg_predictions, [-1])
-# 
-#             max_neg_entries = tf.cast(tf.reduce_sum(fnmask), tf.int32)
-#             nr_neg = tf.cast(cfg.neg_ratio * nr_pos, tf.int32) + self.batch_size
-#             nr_neg = tf.minimum(nr_neg, max_neg_entries)
-# 
-#             val, idxes = tf.nn.top_k(-neg_pred_flat, k=nr_neg)
-#             max_hard_pred = -val[-1]
-#             neg_mask = tf.logical_and(neg_mask, neg_predictions <= max_hard_pred)
-#             fnmask = tf.cast(neg_mask, dtype)
-# 
-#             pos_conf_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_pred, labels=conf_label)
-#             pos_conf_loss = tf.reduce_sum(pos_conf_loss * fpmask, name='pos_conf_loss')
-# 
-#             neg_conf_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_pred, labels=no_classes)
-#             neg_conf_loss = tf.reduce_sum(neg_conf_loss * fnmask, name='neg_conf_loss')
-# 
-#             conf_loss = pos_conf_loss + neg_conf_loss
-#             # add_moving_summary(pos_conf_loss, neg_conf_loss)
-#         else:
-#             conf_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_pred, labels=conf_label))
+        nr_pos = tf.stop_gradient(tf.count_nonzero(conf_label, dtype=tf.int32))
+        nr_pos = tf.identity(nr_pos, name='nr_pos')
+        # location loss, the last class is the background class
+        pos_mask = tf.stop_gradient(tf.not_equal(conf_label, 0))
+        # neg_mask = tf.stop_gradient(tf.equal(conf_label, 0))
+        loc_mask_label = tf.boolean_mask(loc_label, pos_mask)
+        loc_mask_label = tf.identity(loc_mask_label, name='loc_mask_label')
+        loc_mask_pred = tf.boolean_mask(loc_pred, pos_mask)
+        loc_mask_pred = tf.identity(loc_mask_pred, name='loc_mask_pred')
+        loc_loss = tf.losses.huber_loss(loc_mask_label, loc_mask_pred, reduction=tf.losses.Reduction.SUM)
+        loc_loss = tf.identity(loc_loss, 'tot_loc_loss')
+        # confidence loss
+        if cfg.hard_sample_mining:
+
+            dtype = cls_pred.dtype
+            fpmask = tf.cast(pos_mask, dtype)
+            fnmask = tf.cast(neg_mask, dtype)
+            no_classes = tf.cast(pos_mask, tf.int32)
+
+            neg_predictions = tf.where(neg_mask,
+                                       predictions[:, :, 0],
+                                       1. - fnmask)
+
+            neg_pred_flat = tf.reshape(neg_predictions, [-1])
+
+            max_neg_entries = tf.cast(tf.reduce_sum(fnmask), tf.int32)
+            nr_neg = tf.cast(cfg.neg_ratio * nr_pos, tf.int32) + self.batch_size
+            nr_neg = tf.minimum(nr_neg, max_neg_entries)
+
+            val, idxes = tf.nn.top_k(-neg_pred_flat, k=nr_neg)
+            max_hard_pred = -val[-1]
+            neg_mask = tf.logical_and(neg_mask, neg_predictions <= max_hard_pred)
+            fnmask = tf.cast(neg_mask, dtype)
+
+            pos_conf_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_pred, labels=conf_label)
+            pos_conf_loss = tf.reduce_sum(pos_conf_loss * fpmask, name='pos_conf_loss')
+
+            neg_conf_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_pred, labels=no_classes)
+            neg_conf_loss = tf.reduce_sum(neg_conf_loss * fnmask, name='neg_conf_loss')
+
+            conf_loss = pos_conf_loss + neg_conf_loss
+            # add_moving_summary(pos_conf_loss, neg_conf_loss)
+        else:
+            conf_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_pred, labels=conf_label))
+
+        loc_loss = tf.truediv(loc_loss, tf.to_float(nr_pos), name='loc_loss')
+        conf_loss = tf.truediv(conf_loss, tf.to_float(nr_pos), name='conf_loss')
+        # loc_loss = tf.truediv(loc_loss, tf.to_float(self.batch_size), name='loc_loss')
+        # conf_loss = tf.truediv(conf_loss, tf.to_float(self.batch_size), name='conf_loss')
+
+
 #         # cost with weight decay
         if cfg.weight_decay > 0:
             wd_cost = regularize_cost('.*/W', l2_regularizer(cfg.weight_decay), name='l2_regularize_loss')
         else:
             wd_cost = tf.constant(0.0)
-#         loc_loss = tf.truediv(loc_loss, tf.to_float(nr_pos), name='loc_loss')
-#         conf_loss = tf.truediv(conf_loss, tf.to_float(nr_pos), name='conf_loss')
-#         # loc_loss = tf.truediv(loc_loss, tf.to_float(self.batch_size), name='loc_loss')
-#         # conf_loss = tf.truediv(conf_loss, tf.to_float(self.batch_size), name='conf_loss')
+
 
         loss = tf.add_n([loc_loss * cfg.alpha, conf_loss], name='loss')
         add_moving_summary(loc_loss, conf_loss, loss, wd_cost)
@@ -305,10 +312,10 @@ def get_data(train_or_test, batch_size):
     isTrain = train_or_test == 'train'
 
     filename_list = cfg.train_list if isTrain else cfg.test_list
-    if isTrain == True:
-        ds = Data(filename_list, shuffle=isTrain, flip=isTrain, random_crop=cfg.random_crop and isTrain, random_expand=cfg.random_expand and isTrain, random_inter=cfg.random_inter and isTrain)
+    if isTrain:
+        ds = Data(filename_list, shuffle=isTrain, flip=isTrain, random_crop=cfg.random_crop and isTrain, random_expand=cfg.random_expand and isTrain, random_distort=cfg.random_distort and isTrain, random_inter=cfg.random_inter and isTrain)
     else:
-        ds = DataTest(filename_list, shuffle=isTrain, flip=isTrain, random_crop=cfg.random_crop and isTrain, random_expand=cfg.random_expand and isTrain, random_inter=cfg.random_inter and isTrain)
+        ds = DataTest(filename_list, shuffle=isTrain, flip=isTrain, random_crop=cfg.random_crop and isTrain, random_expand=cfg.random_expand and isTrain, random_distort=cfg.random_distort and isTrain, random_inter=cfg.random_inter and isTrain)
         
     sample_num = ds.size()
 
@@ -359,8 +366,7 @@ def get_config(args, model):
         callbacks.append(EnableCallbackIf(PeriodicTrigger(InferenceRunner(ds_test,
                                                                          [CalMAP(cfg.test_list)]),
                                           every_k_epochs=3),
-                         lambda x : x.epoch_num >= 10)),
-#         callbacks.append(InferenceRunner(ds_test, [CalMAP(cfg.test_list)])),
+                         lambda x : x.epoch_num >= 0)),
 
     return TrainConfig(
         dataflow=ds_train,

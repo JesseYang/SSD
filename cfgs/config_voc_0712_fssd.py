@@ -89,6 +89,7 @@ cfg.prior_scaling = [0.1, 0.2]
 
 cfg.random_crop = True
 cfg.random_expand = True
+cfg.random_distort = True
 cfg.random_inter = True
 
 cfg.classes_num = { }
