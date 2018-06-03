@@ -21,7 +21,7 @@ cfg.img_h = cfg.img_size
 
 cfg.n_boxes = 5
 
-cfg.threshold = 0.6
+# cfg.threshold = 0.6
 
 cfg.weight_decay = 5e-4
 

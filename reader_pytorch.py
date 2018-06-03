@@ -1,4 +1,5 @@
 import os, sys, shutil
+import math
 import time
 import pickle
 import numpy as np
@@ -26,11 +27,76 @@ from tensorpack import *
 
 SAVE_DIR = 'input_images'
 
+
+def encode(gt_box):
+    """Encode the variances from the priorbox layers into the ground truth boxes
+    we have matched (based on jaccard overlap) with the prior boxes.
+    Args:
+        matched: (tensor) Coords of ground truth for each prior in point-form
+            Shape: [num_priors, 4].
+        priors: (tensor) Prior boxes in center-offset form
+            Shape: [num_priors,4].
+        variances: (list[float]) Variances of priorboxes
+    Return:
+        encoded boxes (tensor), Shape: [num_priors, 4]
+    """
+
+    # dist b/t match center and prior's center
+    g_cxcy = (gt_box[:, :2] + gt_box[:, 2:]) / 2 - cfg.all_anchors[:, :2]
+    # encode variance
+    g_cxcy /= (cfg.prior_scaling[0] * cfg.all_anchors[:, 2:4])
+    # match wh / prior wh
+    g_wh = (gt_box[:, 2:] - gt_box[:, :2]) / cfg.all_anchors[:, 2:4]
+    g_wh = np.log(g_wh) / cfg.prior_scaling[2]
+    # return target for smooth_l1_loss
+    return np.concatenate([g_cxcy, g_wh], 1)  # [num_priors,4]
+
+def decode(loc):
+    """Decode locations from predictions using priors to undo
+    the encoding we did for offset regression at train time.
+    Args:
+        loc (tensor): location predictions for loc layers,
+            Shape: [num_priors,4]
+        priors (tensor): Prior boxes in center-offset form.
+            Shape: [num_priors,4].
+        variances: (list[float]) Variances of priorboxes
+    Return:
+        decoded bounding box predictions
+    """
+
+    boxes = np.concatenate([
+        cfg.all_anchors[:, :2] + loc[:, :2] * cfg.prior_scaling[0] * cfg.all_anchors[:, 2:4],
+        cfg.all_anchors[:, 2:4] * np.exp(loc[:, 2:] * cfg.prior_scaling[2])], 1)
+    boxes[:, :2] -= boxes[:, 2:] / 2
+    boxes[:, 2:] += boxes[:, :2]
+    return boxes
+
+def point_form(boxes):
+    """ Convert prior_boxes to (xmin, ymin, xmax, ymax)
+    representation for comparison to point form ground truth data.
+    Args:
+        boxes: center-size default boxes from priorbox layers.
+    Return:
+        boxes: Converted xmin, ymin, xmax, ymax form of boxes.
+    """
+    return np.concatenate((boxes[:, :2] - boxes[:, 2:4] / 2,     # xmin, ymin
+                           boxes[:, :2] + boxes[:, 2:4] / 2), 1)  # xmax, ymax
+
 def intersect(box_a, box_b):
-    max_xy = np.minimum(box_a[:, 2:], box_b[2:])
-    min_xy = np.maximum(box_a[:, :2], box_b[:2])
+    num_a = box_a.shape[0]
+    num_b = box_b.shape[0]
+
+    max_xy_a = np.repeat(np.expand_dims(box_a[:, 2:], axis=1), num_b, axis=1)
+    max_xy_b = np.repeat(np.expand_dims(box_b[:, 2:], axis=0), num_a, axis=0)
+    max_xy = np.minimum(max_xy_a, max_xy_b)
+
+    min_xy_a = np.repeat(np.expand_dims(box_a[:, :2], axis=1), num_b, axis=1)
+    min_xy_b = np.repeat(np.expand_dims(box_b[:, :2], axis=0), num_a, axis=0)
+    min_xy = np.maximum(min_xy_a, min_xy_b)
+
+
     inter = np.clip((max_xy - min_xy), a_min=0, a_max=np.inf)
-    return inter[:, 0] * inter[:, 1]
+    return inter[:, :, 0] * inter[:, :, 1]
 
 
 def jaccard_numpy(box_a, box_b):
@@ -39,18 +105,27 @@ def jaccard_numpy(box_a, box_b):
     E.g.:
         A ∩ B / A ∪ B = A ∩ B / (area(A) + area(B) - A ∩ B)
     Args:
-        box_a: Multiple bounding boxes, Shape: [num_boxes,4]
-        box_b: Single bounding box, Shape: [4]
+        box_a: Multiple bounding boxes, Shape: [num_boxes_1, 4]
+        box_b: Multiple bounding boxes, Shape: [num_boxes_2, 4]
     Return:
-        jaccard overlap: Shape: [box_a.shape[0], box_a.shape[1]]
+        jaccard overlap: Shape: [box_a.shape[0], box_b.shape[0]]
     """
+    num_a = box_a.shape[0]
+    num_b = box_b.shape[0]
+
     inter = intersect(box_a, box_b)
-    area_a = ((box_a[:, 2]-box_a[:, 0]) *
-              (box_a[:, 3]-box_a[:, 1]))  # [A,B]
-    area_b = ((box_b[2]-box_b[0]) *
-              (box_b[3]-box_b[1]))  # [A,B]
+
+    area_a = (box_a[:, 2] - box_a[:, 0]) * (box_a[:, 3] - box_a[:, 1])  # [A,B]
+    area_a = np.repeat(np.expand_dims(area_a, axis=1), num_b, axis=1)
+
+    area_b = (box_b[:, 2] - box_b[:, 0]) * (box_b[:, 3] - box_b[:, 1])  # [A,B]
+    area_b = np.repeat(np.expand_dims(area_b, axis=0), num_a, axis=0)
+
     union = area_a + area_b - inter
     return inter / union
+
+
+
 
 rgb_std = (1, 1, 1)
 img_dim = (300, 512)[0]
@@ -60,7 +135,7 @@ p = (0.6, 0.2)[0]
 
 
 class Data(RNGDataFlow):
-    def __init__(self, filename_list, shuffle, flip, random_crop, random_expand, random_inter, save_img=False):
+    def __init__(self, filename_list, shuffle, flip, random_crop, random_expand, random_distort, random_inter, save_img=False):
         self.filename_list = filename_list
         self.save_img = save_img
 
@@ -86,6 +161,7 @@ class Data(RNGDataFlow):
         self.flip = flip
         self.random_crop = random_crop
         self.random_expand = random_expand
+        self.random_distort = random_distort
         self.random_inter = random_inter
 
         train_sets = [('2007', 'trainval'), ('2012', 'trainval')]
@@ -95,68 +171,344 @@ class Data(RNGDataFlow):
     def size(self):
         return len(self.imglist)
 
+
+    def _crop(self, image, boxes, labels):
+        height, width, _ = image.shape
+    
+        def matrix_iou(a, b):
+            """
+            return iou of a and b, numpy version for data augenmentation
+            """
+            lt = np.maximum(a[:, np.newaxis, :2], b[:, :2])
+            rb = np.minimum(a[:, np.newaxis, 2:], b[:, 2:])
+        
+            area_i = np.prod(rb - lt, axis=2) * (lt < rb).all(axis=2)
+            area_a = np.prod(a[:, 2:] - a[:, :2], axis=1)
+            area_b = np.prod(b[:, 2:] - b[:, :2], axis=1)
+            return area_i / (area_a[:, np.newaxis] + area_b - area_i)
+
+        if len(boxes) == 0:
+            return image, boxes, labels
+    
+        while True:
+            mode = random.choice((
+                None,
+                (0.1, None),
+                (0.3, None),
+                (0.5, None),
+                (0.7, None),
+                (0.9, None),
+                (None, None),
+            ))
+    
+            if mode is None:
+                return image, boxes, labels
+    
+            min_iou, max_iou = mode
+            if min_iou is None:
+                min_iou = float('-inf')
+            if max_iou is None:
+                max_iou = float('inf')
+    
+            for _ in range(50):
+                scale = random.uniform(0.3, 1.)
+                min_ratio = max(0.5, scale * scale)
+                max_ratio = min(2, 1. / scale / scale)
+                ratio = math.sqrt(random.uniform(min_ratio, max_ratio))
+                w = int(scale * ratio * width)
+                h = int((scale / ratio) * height)
+    
+                l = random.randrange(width - w)
+                t = random.randrange(height - h)
+                roi = np.array((l, t, l + w, t + h))
+    
+                iou = matrix_iou(boxes, roi[np.newaxis])
+    
+                if not (min_iou <= iou.min() and iou.max() <= max_iou):
+                    continue
+    
+                image_t = image[roi[1]:roi[3], roi[0]:roi[2]]
+    
+                centers = (boxes[:, :2] + boxes[:, 2:]) / 2
+                mask = np.logical_and(roi[:2] < centers, centers < roi[2:]) \
+                    .all(axis=1)
+                boxes_t = boxes[mask].copy()
+                labels_t = labels[mask].copy()
+                if len(boxes_t) == 0:
+                    continue
+    
+                boxes_t[:, :2] = np.maximum(boxes_t[:, :2], roi[:2])
+                boxes_t[:, :2] -= roi[:2]
+                boxes_t[:, 2:] = np.minimum(boxes_t[:, 2:], roi[2:])
+                boxes_t[:, 2:] -= roi[:2]
+    
+                return image_t, boxes_t, labels_t
+
+        return image, boxes, labels
+
+
+    def _distort(self, image):
+        def _convert(image, alpha=1, beta=0):
+            tmp = image.astype(float) * alpha + beta
+            tmp[tmp < 0] = 0
+            tmp[tmp > 255] = 255
+            image[:] = tmp
+    
+        image = image.copy()
+    
+        if random.randrange(2):
+            _convert(image, beta=random.uniform(-32, 32))
+    
+        if random.randrange(2):
+            _convert(image, alpha=random.uniform(0.5, 1.5))
+    
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    
+        if random.randrange(2):
+            tmp = image[:, :, 0].astype(int) + random.randint(-18, 18)
+            tmp %= 180
+            image[:, :, 0] = tmp
+    
+        if random.randrange(2):
+            _convert(image[:, :, 1], alpha=random.uniform(0.5, 1.5))
+    
+        image = cv2.cvtColor(image, cv2.COLOR_HSV2BGR)
+    
+        return image
+
+    def _expand(self, image, boxes, fill=(104, 117, 123), p=0.6):
+        if random.random() > p:
+            return image, boxes
+    
+        height, width, depth = image.shape
+        for _ in range(50):
+            scale = random.uniform(1, 4)
+    
+            min_ratio = max(0.5, 1. / scale / scale)
+            max_ratio = min(2, scale * scale)
+            ratio = math.sqrt(random.uniform(min_ratio, max_ratio))
+            ws = scale * ratio
+            hs = scale / ratio
+            if ws < 1 or hs < 1:
+                continue
+            w = int(ws * width)
+            h = int(hs * height)
+    
+            left = random.randint(0, w - width)
+            top = random.randint(0, h - height)
+    
+            boxes_t = boxes.copy()
+            boxes_t[:, :2] += (left, top)
+            boxes_t[:, 2:] += (left, top)
+    
+            expand_image = np.empty(
+                (h, w, depth),
+                dtype=image.dtype)
+            expand_image[:, :] = fill
+            expand_image[top:top + height, left:left + width] = image
+            image = expand_image
+    
+            return image, boxes_t
+
+    def _mirror(self, image, boxes):
+        _, width, _ = image.shape
+        if random.randrange(2):
+            image = image[:, ::-1]
+            boxes = boxes.copy()
+            boxes[:, 0::2] = width - boxes[:, 2::-2]
+        return image, boxes
+
+
+
     def generate_sample(self, idx, image_height, image_width):
 
-        image, target = self.train_dataset.__getitem__(idx)
+        def pytorch_data(idx):
+            image, target = self.train_dataset.__getitem__(idx)
 
-        image = np.transpose(image.numpy(), (1, 2, 0))
-        boxes = target[:,0:4] * 300
-        class_ary = target[:,-1] - 1
-        box_num = class_ary.shape[0]
-        w = 300
-        h = 300
+            image = np.transpose(image.numpy(), (1, 2, 0))
+            boxes = target[:,0:4]
+            labels = target[:,-1]
+            box_num = labels.shape[0]
+            h, w, _ = image.shape
+
+            return [image, boxes, labels, image.shape]
+
+        def our_data(idx):
+            line = self.imglist[idx]
+
+            record = line.split(' ')
+            anno = [float(num) for num in record[1:]]
+
+            image = cv2.imread(record[0])
+
+            image_shape = image.shape
+
+            # extract annotation information
+            box_num = len(anno) // 5
+            boxes = np.zeros((box_num, 4))
+            labels = np.zeros((box_num)).astype(int)
+            for box_idx in range(box_num):
+                for coord_idx in range(4):
+                    boxes[box_idx, coord_idx] = anno[box_idx * 5 + coord_idx]
+                labels[box_idx] = int(anno[box_idx * 5 + 4]) + 1
+                box_idx += 1
+
+            if self.random_crop:
+                image, boxes, labels = self._crop(image, boxes, labels)
+
+            if self.random_distort:
+                image = self._distort(image)
+
+            if self.random_expand:
+                image, boxes = self._expand(image, boxes)
+
+            if self.flip == True:
+                image, boxes = self._mirror(image, boxes)
+
+
+            box_num = boxes.shape[0]
+
+            h, w, _ = image.shape
+
+            boxes[:,0::2] = boxes[:,0::2] / w
+            boxes[:,1::2] = boxes[:,1::2] / h
+
+            if self.random_inter:
+                inter_modes = [cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4]
+                inter_mode_idx = np.random.randint(5)
+                image = cv2.resize(image, (image_width, image_height), inter_modes[inter_mode_idx])
+            else:
+                image = cv2.resize(image, (image_width, image_height))
+
+            return [image, boxes, labels, image_shape]
+
+        image, boxes, labels, image_shape = our_data(idx)
 
         # only three variables are used in the following code:
         # image: 300 x 300 x 3 numpy array
-        # boxes: N x 4 numpy array, N is boxes number, coordinates for each box
-        # class_ary: N numpy array, N is boxes number, class for each box
+        # boxes: N x 4 numpy array, N is boxes number, uniform coordinates for each box
+        # labels: N numpy array, N is boxes number, class for each box, class 0 is the background
         # these variables can be generated by the pytorch version dataset, and the data part can be switched to pytorch version
 
-        anchor_iou = np.zeros((cfg.tot_anchor_num, ))
-        # the backgound class is the 0th class
-        anchor_cls = np.zeros((cfg.tot_anchor_num, )).astype(int)
-        anchor_loc = np.zeros((cfg.tot_anchor_num, 4))
 
-        gt_box_num = 0
-        gt_box_coord = np.zeros((cfg.max_gt_box_shown, 4))
-        for box_idx in range(box_num):
-            if class_ary.shape[0] < box_num:
-                import pdb
-                pdb.set_trace()
-            class_num = class_ary[box_idx]
+        def old_match_method(image, boxes, labels):
 
-            xmin, xmax = boxes[box_idx, 0::2] / w
-            ymin, ymax = boxes[box_idx, 1::2] / h
+            box_num = boxes.shape[0]
+            h, w, _ = image.shape
 
-            if gt_box_num < cfg.max_gt_box_shown:
-                gt_box_coord[gt_box_num] = np.asarray([ymin, xmin, ymax, xmax])
-                gt_box_num += 1
+            boxes = boxes * 300
 
-            gt_box = Box(xmin, ymin, xmax, ymax, mode='XYXY')
+            anchor_iou = np.zeros((cfg.tot_anchor_num, ))
+            # the backgound class is the 0th class
+            anchor_cls = np.zeros((cfg.tot_anchor_num, )).astype(int)
+            anchor_loc = np.zeros((cfg.tot_anchor_num, 4))
 
-            gt_box_a = gt_box.w * gt_box.h
+            gt_box_num = 0
+            gt_box_coord = np.zeros((cfg.max_gt_box_shown, 4))
+            for box_idx in range(box_num):
+                if labels.shape[0] < box_num:
+                    import pdb
+                    pdb.set_trace()
+                class_num = labels[box_idx]
+
+                xmin, xmax = boxes[box_idx, 0::2] / w
+                ymin, ymax = boxes[box_idx, 1::2] / h
+
+                if gt_box_num < cfg.max_gt_box_shown:
+                    gt_box_coord[gt_box_num] = np.asarray([ymin, xmin, ymax, xmax])
+                    gt_box_num += 1
+
+                gt_box = Box(xmin, ymin, xmax, ymax, mode='XYXY')
+
+                gt_box_a = gt_box.w * gt_box.h
 
 
-            # ugly, should be replaced with jaccard_numpy
-            for anchor_idx, anchor in enumerate(cfg.all_anchors):
-                if gt_box_a > anchor[4] or gt_box_a < anchor[5]:
-                    continue
-                if np.abs(gt_box.x - anchor[0]) > min(gt_box.w, anchor[2]) / 2:
-                    continue
-                if np.abs(gt_box.y - anchor[1]) > min(gt_box.h, anchor[3]) / 2:
-                    continue
-                anchor_box = Box(*anchor[:4])
-                iou = box_iou(gt_box, anchor_box)
-                if iou >= cfg.iou_th and iou > anchor_iou[anchor_idx]:
-                    # the 0th class is the background, thus other classes' number should be pushed back 1
-                    anchor_cls[anchor_idx] = class_num + 1
-                    anchor_loc[anchor_idx] = encode_box(gt_box, anchor_box)
-                if iou > anchor_iou[anchor_idx]:
-                    anchor_iou[anchor_idx] = iou
+                # ugly, should be replaced with jaccard_numpy
+                for anchor_idx, anchor in enumerate(cfg.all_anchors):
+                    if gt_box_a > anchor[4] or gt_box_a < anchor[5]:
+                        continue
+                    if np.abs(gt_box.x - anchor[0]) > min(gt_box.w, anchor[2]) / 2:
+                        continue
+                    if np.abs(gt_box.y - anchor[1]) > min(gt_box.h, anchor[3]) / 2:
+                        continue
+                    anchor_box = Box(*anchor[:4])
+                    iou = box_iou(gt_box, anchor_box)
+                    if iou >= cfg.iou_th and iou > anchor_iou[anchor_idx]:
+                        # the 0th class is the background
+                        anchor_cls[anchor_idx] = class_num
+                        anchor_loc[anchor_idx] = encode_box(gt_box, anchor_box)
+                    if iou > anchor_iou[anchor_idx]:
+                        anchor_iou[anchor_idx] = iou
 
-        anchor_neg_mask = anchor_iou < cfg.neg_iou_th
+            anchor_neg_mask = anchor_iou < cfg.neg_iou_th
 
-        return [image, gt_box_coord, anchor_cls, anchor_neg_mask, anchor_loc, np.asarray([300,300, 3])]
+            return [image, gt_box_coord, anchor_cls, anchor_neg_mask, anchor_loc, np.asarray([300,300, 3])]
+
+
+        def new_match_method(image, boxes, labels):
+
+            box_num = boxes.shape[0]
+
+            anchor_cls = np.zeros((cfg.tot_anchor_num, )).astype(int)
+            anchor_loc = np.zeros((cfg.tot_anchor_num, 4))
+
+            ious = jaccard_numpy(boxes, point_form(cfg.all_anchors))
+
+            best_prior_overlap = np.max(ious, axis=1)
+            best_prior_idx = np.argmax(ious, axis=1)
+
+            # num_anchors, best gt for each anchor
+            best_truth_overlap = np.max(ious, axis=0)
+            best_truth_idx = np.argmax(ious, axis=0)
+
+            # ensure best anchor box
+            for anchor_idx in best_prior_idx:
+                best_truth_overlap[anchor_idx] = 2
+
+            # ensure every gt matches with its prior of max overlap
+            for j in range(box_num):
+                best_truth_idx[best_prior_idx[j]] = j
+
+            anchor_cls = labels[best_truth_idx]
+            anchor_cls[best_truth_overlap < cfg.iou_th] = 0
+
+            anchor_loc = boxes[best_truth_idx]
+            anchor_loc = encode(anchor_loc)
+
+            anchor_neg_mask = best_truth_overlap < cfg.neg_iou_th
+
+            # gt_box_coord should be the format of (ymin, xmin, ymax, xmax)
+            if box_num >= cfg.max_gt_box_shown:
+                gt_box_coord = boxes[:cfg.max_gt_box_shown][:,np.asarray([1, 0, 3, 2])]
+            else:
+                gt_box_coord = np.zeros((cfg.max_gt_box_shown, 4))
+                gt_box_coord[:box_num] = boxes[:,np.asarray([1, 0, 3, 2])]
+
+
+            return [image, gt_box_coord, anchor_cls, anchor_neg_mask, anchor_loc, np.asarray([cfg.img_h, cfg.img_w, 3])]
+
+        # image_old, gt_box_coord_old, anchor_cls_old, anchor_neg_mask_old, anchor_loc_old, shape_old = old_match_method(image, boxes, labels)
+        image_new, gt_box_coord_new, anchor_cls_new, anchor_neg_mask_new, anchor_loc_new, shape_new = new_match_method(image, boxes, labels)
+
+        # temp = [image_new, gt_box_coord_new, anchor_cls_new, anchor_neg_mask_new, anchor_loc_new, image_shape]
+
+        '''
+        def get_diff(d1, d2):
+            return np.sum(np.abs(d1 - d2))
+
+        if idx == 15:
+            import pdb
+            pdb.set_trace()
+
+        diff_1 = get_diff(image_old, image_new)
+        diff_2 = get_diff(anchor_cls_old, anchor_cls_new)
+        diff_3 = get_diff(anchor_neg_mask_old.astype(np.int), anchor_neg_mask_new.astype(np.int))
+        diff_4 = get_diff(anchor_loc_old[np.where(anchor_cls_old>0)[0]], anchor_loc_new[np.where(anchor_cls_old>0)[0]])
+        print("%.2f %.2f %.2f %.2f" % (diff_1, diff_2, diff_3, diff_4))
+        '''
+
+        return [image_new, gt_box_coord_new, anchor_cls_new, anchor_neg_mask_new, anchor_loc_new, np.asarray(image_shape)]
+
 
     def get_data(self):
         idxs = np.arange(len(self.imglist))
@@ -228,7 +580,8 @@ def generate_gt_result(test_path, gt_dir="result_gt", overwrite=True):
 if __name__ == '__main__':
     # df = Data('voc_2007_train.txt', shuffle=False, flip=False, affine_trans=False)
     train_list = ["voc_2007_train.txt", "voc_2012_train.txt", "voc_2007_val.txt", "voc_2012_val.txt"]
-    df = Data(train_list, shuffle=True, flip=True, random_crop=True, random_expand=True, random_inter=True, save_img=True)
+    # df = Data(train_list, shuffle=True, flip=True, random_crop=True, random_expand=True, random_distort=True, random_inter=True, save_img=True)
+    df = Data(train_list, shuffle=False, flip=False, random_crop=False, random_expand=False, random_distort=False, random_inter=False, save_img=True)
     df.reset_state()
 
     g = df.get_data()

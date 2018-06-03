@@ -271,7 +271,7 @@ def get_data(train_or_test, batch_size):
 
     filename_list = cfg.train_list if isTrain else cfg.test_list
     if isTrain == True:
-        ds = Data(filename_list, shuffle=isTrain, flip=isTrain, random_crop=cfg.random_crop and isTrain, random_expand=cfg.random_expand and isTrain, random_inter=cfg.random_inter and isTrain)
+        ds = Data(filename_list, shuffle=isTrain, flip=isTrain, random_crop=cfg.random_crop and isTrain, random_expand=cfg.random_expand and isTrain, random_distort=True, random_inter=cfg.random_inter and isTrain)
     else:
         ds = DataTest(filename_list, shuffle=isTrain, flip=isTrain, random_crop=cfg.random_crop and isTrain, random_expand=cfg.random_expand and isTrain, random_inter=cfg.random_inter and isTrain)
         
@@ -291,10 +291,10 @@ def get_data(train_or_test, batch_size):
         augmentors = [
             imgaug.ToUint8()
         ]
-    ds = AugmentImageComponent(ds, augmentors)
+    # ds = AugmentImageComponent(ds, augmentors)
     ds = BatchData(ds, batch_size, remainder=not isTrain)
     if isTrain:
-        ds = PrefetchDataZMQ(ds, min(6, multiprocessing.cpu_count()))
+        ds = PrefetchDataZMQ(ds, min(4, multiprocessing.cpu_count()))
     return ds, sample_num
 
 
@@ -312,7 +312,7 @@ def get_config(args, model):
       # PeriodicTrigger(InferenceRunner(ds_test,
       #                                 ScalarStats(['conf_loss', 'loc_loss', 'loss'])),
       #                 every_k_epochs=3),
-      InferenceRunner(ds_test, ScalarStats(['conf_loss', 'loc_loss', 'loss'])),
+      PeriodicTrigger(InferenceRunner(ds_test, ScalarStats(['conf_loss', 'loc_loss', 'loss'])), every_k_epochs=3),
       ScheduledHyperParamSetter('learning_rate',
                                 cfg.lr_schedule,
                                 step_based=True),
@@ -324,7 +324,7 @@ def get_config(args, model):
         callbacks.append(EnableCallbackIf(PeriodicTrigger(InferenceRunner(ds_test,
                                                                          [CalMAP(cfg.test_list)]),
                                           every_k_epochs=3),
-                         lambda x : x.epoch_num >= 10)),
+                         lambda x : x.epoch_num >= 0)),
 #         callbacks.append(InferenceRunner(ds_test, [CalMAP(cfg.test_list)])),
 
     return TrainConfig(

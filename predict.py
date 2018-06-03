@@ -13,33 +13,39 @@ import re
 
 # %matplotlib inline
 import matplotlib.pyplot as plt
-from pycocotools.coco import COCO
-from pycocotools.cocoeval import COCOeval
-import skimage.io as io
-import pylab
-
-
+# from pycocotools.coco import COCO
+# from pycocotools.cocoeval import COCOeval
+# import skimage.io as io
+# import pylab
 
 from tensorpack.tfutils.sesscreate import SessionCreatorAdapter, NewSessionCreator
 from tensorpack import *
 
 try:
-    from .cfgs.config_voc0712_fssd import cfg
+    from .cfgs.config import cfg
     from .utils_bak import postprocess
 except Exception:
-    from cfgs.config_voc0712_fssd import cfg
+    from cfgs.config import cfg
     from utils_bak import postprocess
 
 try:
     from .vgg_ssd import VGGSSD
+    from .vgg_fssd import VGGFSSD
     from .mobilenetv2_ssd import SSDLite
 except Exception:
     from vgg_ssd import VGGSSD
+    from vgg_fssd import VGGFSSD
     from mobilenetv2_ssd import SSDLite
 
 def get_pred_func(args):
     sess_init = SaverRestore(args.model_path)
-    model = VGGSSD() if args.backbone == 'vgg' else SSDLite(data_format="NCHW")
+    if args.network == "vgg_fssd":
+        model = VGGFSSD()
+    elif args.network == "vgg_ssd":
+        model = VGGSSD()
+    else:
+        model = SSDLite()
+    # model = VGGSSD() if args.backbone == 'vgg' else SSDLite(data_format="NCHW")
     predict_config = PredictConfig(session_init=sess_init,
                                    model=model,
                                    input_names=["input"],
@@ -64,7 +70,7 @@ def draw_result(image, boxes):
     for klass, k_boxes in boxes.items():
         for k_box in k_boxes:
 
-            [conf, xmin, ymin, xmax, ymax] = k_box
+            [xmin, ymin, xmax, ymax, conf] = k_box
 
             label = "%s %.3f" % (klass, conf)
             label_height = 16
@@ -92,9 +98,10 @@ def draw_result(image, boxes):
 
 def predict_image(input_path, output_path, predict_func, det_th):
     ori_image = cv2.imread(input_path)
-    cvt_clr_image = cv2.cvtColor(ori_image, cv2.COLOR_BGR2RGB)
-    image = cv2.resize(cvt_clr_image, (cfg.img_w, cfg.img_h))
+    # cvt_clr_image = cv2.cvtColor(ori_image, cv2.COLOR_BGR2RGB)
+    image = cv2.resize(ori_image, (cfg.img_w, cfg.img_h))
     image = np.expand_dims(image, axis=0)
+
     predictions = predict_func(image)
 
     boxes = postprocess(predictions, image_path=input_path, det_th=det_th)
@@ -205,7 +212,9 @@ def generate_pred_images(image_paths, predict_func, crop, generate_resultfomat, 
         
 
 def evaluate_map(annotations, evaluate_name):
+    pass
 
+    '''
     print("strat evaluate......")
     pylab.rcParams['figure.figsize'] = (10.0, 8.0)
     annType = ['segm','bbox','keypoints']
@@ -243,19 +252,20 @@ def evaluate_map(annotations, evaluate_name):
     cocoEval.evaluate()
     cocoEval.accumulate()
     cocoEval.summarize()
+    '''
 
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--backbone', help='the backbone network', default='mobilenetv2')
+    parser.add_argument('--network', help='the network type', default='vgg_fssd')
     parser.add_argument('--model_path', help='path of the model waiting for validation.')
     parser.add_argument('--data_format', choices=['NCHW', 'NHWC'], default='NHWC')
     parser.add_argument('--input_path', help='path of the input image')
     parser.add_argument('--output_path', help='path of the output image', default='output.png')
     parser.add_argument('--test_path', help='path of the test file', default=None)
     parser.add_argument('--pred_dir', help='directory to save txt result', default='result_pred')
-    parser.add_argument('--det_th', help='detection threshold', type=float, default=0.01)
+    parser.add_argument('--det_th', help='detection threshold', type=float, default=0.25)
     parser.add_argument('--gen_image', action='store_true')
     parser.add_argument('--crop', action='store_true')
     parser.add_argument('--output_dir', help='directory to save image result', default='output')
@@ -283,7 +293,7 @@ if __name__ == '__main__':
 
     if args.input_path != None:
         # predict one image (given the input image path) and save the result image
-        predict_image(args.input_path, args.output_path, predict_func, float(args.det_th))
+        predict_image(args.input_path, args.output_path, predict_func, args.det_th)
     elif args.test_path != None:
         test_paths = args.test_path.split(',')
         image_paths = []
